@@ -79,6 +79,7 @@ function getSandboxWorkingDir(
 function useLocalWorkspaceFiles(enabled: boolean): WorkspaceFilesResult {
   const { data: conversation } = useActiveConversation();
   const runtimeIsReady = useRuntimeIsReady();
+  const activeBackend = getActiveBackend().backend;
 
   const conversationId = conversation?.id;
   const conversationUrl = conversation?.conversation_url;
@@ -86,13 +87,15 @@ function useLocalWorkspaceFiles(enabled: boolean): WorkspaceFilesResult {
   const selectedRepository = conversation?.selected_repository;
   const configuredWorkingDir = conversation?.workspace?.working_dir?.trim();
   const workingDir =
-    getActiveBackend().backend.kind === "sandbox"
+    activeBackend.kind === "sandbox"
       ? getSandboxWorkingDir(selectedRepository, configuredWorkingDir)
       : configuredWorkingDir;
 
   const query = useQuery<string[]>({
     queryKey: [
       "workspace-files",
+      activeBackend.id,
+      activeBackend.kind,
       conversationId,
       conversationUrl,
       sessionApiKey,
@@ -153,6 +156,7 @@ function useCloudWorkspaceFiles(enabled: boolean): WorkspaceFilesResult {
   const { conversationId } = useOptionalConversationId();
   const { data: conversation } = useActiveConversation();
   const runtimeIsReady = useRuntimeIsReady();
+  const activeBackend = getActiveBackend().backend;
 
   const selectedRepository = conversation?.selected_repository;
   const workingDir = conversation?.workspace?.working_dir?.trim();
@@ -164,7 +168,13 @@ function useCloudWorkspaceFiles(enabled: boolean): WorkspaceFilesResult {
   const absolutePath = gitPath.startsWith("/") ? gitPath : `/${gitPath}`;
 
   const query = useQuery<string[]>({
-    queryKey: ["workspace-files-cloud", conversationId, absolutePath],
+    queryKey: [
+      "workspace-files-cloud",
+      activeBackend.id,
+      activeBackend.kind,
+      conversationId,
+      absolutePath,
+    ],
     queryFn: async () => {
       const files = await listCloudConversationFiles(
         conversationId!,
@@ -207,7 +217,8 @@ export function useWorkspaceFiles(): WorkspaceFilesResult {
     getSnapshot,
     getSnapshot,
   );
-  const isCloud = snapshot.active.backend.kind === "cloud";
+  const activeBackend = snapshot.active.backend;
+  const isCloud = activeBackend.kind === "cloud";
 
   const local = useLocalWorkspaceFiles(!isCloud);
   const cloud = useCloudWorkspaceFiles(isCloud);

@@ -61,6 +61,8 @@ export function useHasGitCommits(options?: { enabled?: boolean }): {
   const query = useQuery<boolean>({
     queryKey: [
       "has-git-commits",
+      backend.id,
+      backend.kind,
       conversationId,
       conversationUrl,
       sessionApiKey,

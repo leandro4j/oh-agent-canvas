@@ -1,13 +1,10 @@
 import { AgentServerClient } from "@openhands/typescript-client/clients";
+import { getAgentServerClientOptions } from "../agent-server-client-options";
 import { getActiveBackend } from "../backend-registry/active-store";
 import type { Backend } from "../backend-registry/types";
 
 export const SANDBOX_CONTROL_PLANE_PREFIX = "/api/v1";
 export const SANDBOX_CONTROL_PLANE_TIMEOUT_MS = 5 * 60 * 1000;
-
-function normalizeHost(host: string): string {
-  return host.replace(/\/+$/, "");
-}
 
 function requireSandboxBackend(backend: Backend): Backend {
   if (backend.kind !== "sandbox") {
@@ -28,10 +25,16 @@ export function createSandboxControlPlaneClient(
   timeout = SANDBOX_CONTROL_PLANE_TIMEOUT_MS,
 ): AgentServerClient {
   const sandbox = requireSandboxBackend(backend);
-  return new AgentServerClient({
-    host: `${normalizeHost(sandbox.host)}${SANDBOX_CONTROL_PLANE_PREFIX}`,
-    ...(sandbox.apiKey ? { apiKey: sandbox.apiKey } : {}),
+  const options = getAgentServerClientOptions({
+    host: `${sandbox.host.replace(/\/+$/, "")}${SANDBOX_CONTROL_PLANE_PREFIX}`,
+    apiKey: sandbox.apiKey,
     timeout,
+  });
+
+  return new AgentServerClient({
+    host: options.host,
+    ...(options.apiKey ? { apiKey: options.apiKey } : {}),
+    ...(options.timeout !== undefined ? { timeout: options.timeout } : {}),
   });
 }
 

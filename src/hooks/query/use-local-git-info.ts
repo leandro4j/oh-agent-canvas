@@ -147,6 +147,8 @@ export const useLocalGitInfo = () => {
   return useQuery<LocalGitInfo>({
     queryKey: [
       "local-git-info",
+      backend.id,
+      backend.kind,
       conversationId,
       conversationUrl,
       sessionApiKey,
