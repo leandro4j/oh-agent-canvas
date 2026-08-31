@@ -4,6 +4,10 @@ import {
   INVALID_BACKEND_API_KEY_ERROR,
   MISSING_BACKEND_API_KEY_ERROR,
 } from "#/hooks/query/use-backends-health";
+import {
+  INVALID_SANDBOX_BACKEND_API_KEY_ERROR,
+  SANDBOX_SERVER_UNREACHABLE_ERROR,
+} from "#/api/sandbox/sandbox-service.api";
 import { I18nKey } from "#/i18n/declaration";
 import { CORS_OR_NETWORK_ERROR_MESSAGE } from "#/utils/user-facing-error";
 import { getBackendStatusLabel } from "./backend-status-label";
@@ -97,5 +101,34 @@ describe("getBackendStatusLabel", () => {
         { isConnected: false, lastError: INVALID_BACKEND_API_KEY_ERROR },
       ),
     ).toBe(I18nKey.BACKEND$STATUS_DISCONNECTED_CHECK_API_KEY);
+  });
+
+  it("distinguishes Sandbox Server reachability, auth, and success", () => {
+    expect(
+      getBackendStatusLabel(
+        t,
+        { kind: "sandbox", apiKey: "sandbox-key" },
+        { isConnected: false, lastError: SANDBOX_SERVER_UNREACHABLE_ERROR },
+      ),
+    ).toBe(I18nKey.BACKEND$STATUS_DISCONNECTED_CHECK_URL_OR_NETWORK);
+
+    expect(
+      getBackendStatusLabel(
+        t,
+        { kind: "sandbox", apiKey: "sandbox-key" },
+        {
+          isConnected: false,
+          lastError: INVALID_SANDBOX_BACKEND_API_KEY_ERROR,
+        },
+      ),
+    ).toBe(I18nKey.BACKEND$STATUS_DISCONNECTED_CHECK_API_KEY);
+
+    expect(
+      getBackendStatusLabel(
+        t,
+        { kind: "sandbox", apiKey: "sandbox-key" },
+        { isConnected: true, lastError: null },
+      ),
+    ).toBe(I18nKey.ONBOARDING$BACKEND_STATUS_CONNECTED);
   });
 });

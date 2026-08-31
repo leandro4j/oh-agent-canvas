@@ -15,6 +15,10 @@ import {
 } from "#/hooks/query/use-backends-health";
 import { I18nKey } from "#/i18n/declaration";
 import type { Backend } from "#/api/backend-registry/types";
+import {
+  usesDirectRuntime,
+  usesManagedCloud,
+} from "#/api/backend-registry/capabilities";
 // Import the trigger helpers from the lightweight store, not the overlay
 // component, so the eagerly-mounted sidebar/backend-selector graph does not
 // pull in the overlay's render code (the overlay is lazy-loaded from
@@ -68,10 +72,10 @@ function buildOptions(
 ): DropdownOption[] {
   const options: DropdownOption[] = [];
 
-  const locals = registered.filter((b) => b.kind === "local");
-  const clouds = registered.filter((b) => b.kind === "cloud");
+  const directBackends = registered.filter((b) => usesDirectRuntime(b));
+  const clouds = registered.filter((b) => usesManagedCloud(b));
 
-  for (const b of locals) {
+  for (const b of directBackends) {
     options.push({
       value: makeOptionValue(b.id, null),
       label: b.name,

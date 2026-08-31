@@ -1,4 +1,4 @@
-export type BackendKind = "local" | "cloud";
+export type BackendKind = "local" | "cloud" | "sandbox";
 export type BackendAuthMode = "api-key" | "cookie";
 
 export interface Backend {

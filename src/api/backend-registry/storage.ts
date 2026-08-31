@@ -14,7 +14,7 @@ export const BACKENDS_STORAGE_KEY = "openhands-backends";
 export const ACTIVE_BACKEND_STORAGE_KEY = "openhands-active-backend";
 
 function isValidKind(value: unknown): value is BackendKind {
-  return value === "local" || value === "cloud";
+  return value === "local" || value === "cloud" || value === "sandbox";
 }
 
 function isValidAuthMode(value: unknown): value is BackendAuthMode {

@@ -114,7 +114,9 @@ export function BackendRow({
         <span className="px-2 py-1 rounded-full text-[11px] uppercase tracking-wide text-[var(--oh-text-tertiary)] bg-[var(--oh-surface)] border border-[var(--oh-border)]">
           {backend.kind === "cloud"
             ? t(I18nKey.BACKEND$KIND_CLOUD)
-            : t(I18nKey.BACKEND$KIND_LOCAL)}
+            : backend.kind === "sandbox"
+              ? t(I18nKey.BACKEND$KIND_SANDBOX)
+              : t(I18nKey.BACKEND$KIND_LOCAL)}
         </span>
       </button>
       <div className="flex shrink-0 items-center gap-2 px-3 py-3">

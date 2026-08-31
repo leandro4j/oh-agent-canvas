@@ -14,6 +14,7 @@ import {
 } from "#/constants/acp-providers";
 import { useApplyOnboardingAgentProfile } from "#/hooks/mutation/use-apply-onboarding-agent-profile";
 import { type OnboardingAgentId } from "./choose-agent-step";
+import type { BackendKind } from "#/api/backend-registry/types";
 
 interface SetupAcpSecretsStepProps {
   /** ACP provider whose credentials we're collecting (e.g. ``"claude-code"``).
@@ -240,10 +241,10 @@ export function SetupAcpSecretsStep({
  * Exported for unit testing the matrix without rendering the modal.
  */
 export function backendRequiresAcpCredentials(
-  backendKind: "local" | "cloud",
+  backendKind: BackendKind,
   authStatus: "authenticated" | "unauthenticated" | "unknown",
 ): boolean {
   if (authStatus === "authenticated") return false;
-  if (backendKind === "cloud") return true;
+  if (backendKind !== "local") return true;
   return authStatus === "unauthenticated";
 }

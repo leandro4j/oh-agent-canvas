@@ -1,7 +1,7 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, Globe, Info, Monitor } from "lucide-react";
+import { Box, ChevronDown, Globe, Info, Monitor } from "lucide-react";
 import { ServerClient } from "@openhands/typescript-client/clients";
 import OpenHandsLogoWhite from "#/assets/branding/openhands-logo-white.svg?react";
 import { ModalBackdrop } from "#/components/shared/modals/modal-backdrop";
@@ -25,6 +25,8 @@ import {
   getDisplayAgentServerVersion,
   validateLocalBackend,
 } from "#/api/agent-server-compatibility";
+import { validateSandboxBackend } from "#/api/sandbox/sandbox-service.api";
+import { getBackendCapabilities } from "#/api/backend-registry/capabilities";
 import ChevronDownSmallIcon from "#/icons/chevron-down-small.svg?react";
 import { I18nKey } from "#/i18n/declaration";
 import type { Backend, BackendKind } from "#/api/backend-registry/types";
@@ -155,7 +157,7 @@ const DEPLOYMENT_OPTIONS_URL =
 export type BackendConnectionMethod = "manual" | "cloud_login";
 
 export type BackendAddedSource = CloudConnectionSource;
-type AddBackendOption = "cloud" | "agent-server";
+type AddBackendOption = "cloud" | "agent-server" | "sandbox";
 type AgentServerLocation = "local" | "remote";
 
 function getConnectionTestFailedTitle(
@@ -180,8 +182,14 @@ function getConnectionTestFailedMessage(title: string, error: unknown): string {
 async function testBackendConnection(
   backend: Pick<Backend, "host" | "apiKey" | "kind">,
 ): Promise<BackendConnectionTestMetadata> {
-  // Cloud backends authenticate via OAuth; preflight GET is not applicable.
-  if (backend.kind !== "local") return { agentServerVersion: null };
+  const capabilities = getBackendCapabilities(backend);
+  if (capabilities.usesControlPlane && !capabilities.usesManagedCloud) {
+    await validateSandboxBackend(backend, 5000);
+    return { agentServerVersion: null };
+  }
+  // Managed Cloud backends authenticate via OAuth; preflight GET is not
+  // applicable.
+  if (!capabilities.usesDirectRuntime) return { agentServerVersion: null };
   const agentServerVersion = await validateLocalBackend(backend, 5000);
   return { agentServerVersion };
 }
@@ -229,7 +237,9 @@ function BackendStatusBadge({
   const kindLabel =
     backend.kind === "cloud"
       ? t(I18nKey.BACKEND$KIND_CLOUD)
-      : t(I18nKey.BACKEND$KIND_LOCAL);
+      : backend.kind === "sandbox"
+        ? t(I18nKey.BACKEND$KIND_SANDBOX)
+        : t(I18nKey.BACKEND$KIND_LOCAL);
 
   return (
     <div className="flex flex-col gap-2">
@@ -349,7 +359,8 @@ function useBackendForm({
   // custom-domain local agent-server by host alone, so ManualConnectionColumn
   // exposes `setKind` (a Type selector) to let the user declare it.
   const kind = fixedKind ?? kindOverride ?? inferKindFromHost(host);
-  const needsApiKey = requireApiKey || kind !== "local";
+  const needsApiKey =
+    requireApiKey || getBackendCapabilities(kind).usesControlPlane;
   const canSubmit =
     name.trim().length > 0 &&
     isValidHostUrl(host) &&
@@ -545,7 +556,8 @@ export function BackendForm({
   const testIdRoot =
     explicitTestIdRoot ?? (mode === "edit" ? "edit-backend" : "add-backend");
 
-  const needsApiKey = requireApiKey || kind !== "local";
+  const needsApiKey =
+    requireApiKey || getBackendCapabilities(kind).usesControlPlane;
   const canSubmit =
     name.trim().length > 0 &&
     isValidHostUrl(host) &&
@@ -609,6 +621,11 @@ export function BackendForm({
           name={`${testIdRoot}-host`}
           type="text"
           label={t(I18nKey.BACKEND$HOST_LABEL)}
+          hint={
+            kind === "sandbox"
+              ? t(I18nKey.BACKEND$SANDBOX_HOST_HELPER)
+              : undefined
+          }
           value={host}
           onChange={
             hostReadOnly
@@ -631,6 +648,11 @@ export function BackendForm({
           name={`${testIdRoot}-api-key`}
           type="password"
           label={t(I18nKey.BACKEND$KEY_LABEL)}
+          hint={
+            kind === "sandbox"
+              ? t(I18nKey.BACKEND$SANDBOX_KEY_HELPER)
+              : undefined
+          }
           value={apiKey}
           onChange={(value) => {
             setApiKey(value);
@@ -802,6 +824,10 @@ interface ManualConnectionColumnProps {
   submitTestId?: string;
   fixedKind?: BackendKind;
   showKindSelector?: boolean;
+  hostHint?: string;
+  hostPlaceholder?: string;
+  apiKeyHint?: string;
+  apiKeyPlaceholder?: string;
 }
 
 /**
@@ -818,6 +844,10 @@ function ManualConnectionColumn({
   submitTestId,
   fixedKind,
   showKindSelector = true,
+  hostHint,
+  hostPlaceholder,
+  apiKeyHint,
+  apiKeyPlaceholder,
 }: ManualConnectionColumnProps) {
   const { t } = useTranslation("openhands");
 
@@ -883,14 +913,14 @@ function ManualConnectionColumn({
         name={`${testIdRoot}-host`}
         type="text"
         label={t(I18nKey.BACKEND$HOST_LABEL)}
-        hint={t(I18nKey.BACKEND$HOST_HELPER)}
+        hint={hostHint ?? t(I18nKey.BACKEND$HOST_HELPER)}
         value={host}
         onChange={(value) => {
           setHost(value);
           setConnectionError(null);
         }}
         // eslint-disable-next-line i18next/no-literal-string -- example value, not translatable
-        placeholder="http://localhost:8000"
+        placeholder={hostPlaceholder ?? "http://localhost:8000"}
         className="w-full"
       />
 
@@ -915,13 +945,14 @@ function ManualConnectionColumn({
         name={`${testIdRoot}-api-key`}
         type="password"
         label={t(I18nKey.BACKEND$KEY_LABEL)}
+        hint={apiKeyHint}
         value={apiKey}
         onChange={(value) => {
           setApiKey(value);
           setConnectionError(null);
         }}
         // eslint-disable-next-line i18next/no-literal-string -- example value, not translatable
-        placeholder="sk-••••••••••"
+        placeholder={apiKeyPlaceholder ?? "sk-••••••••••"}
         className="w-full"
       />
 
@@ -1135,7 +1166,7 @@ function BackendOptionTab({
       onClick={() => onSelect(value)}
       className={cn(
         "relative flex min-h-16 w-full cursor-pointer items-center gap-3 px-3 py-3 text-left transition-colors",
-        "first:border-r first:border-r-[var(--oh-border)]",
+        "border-r border-r-[var(--oh-border)] last:border-r-0",
         "focus-visible:z-10 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-blue-300",
         isSelected
           ? "bg-[var(--oh-surface-raised)] text-white after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-primary"
@@ -1353,13 +1384,14 @@ function AddBackendChooser({
   const panelId = "add-backend-selected-panel";
   const selectedTabId = `add-backend-option-${selectedOption}-tab`;
   const isCloudSelected = selectedOption === "cloud";
+  const isSandboxSelected = selectedOption === "sandbox";
 
   return (
     <div data-testid="add-backend-chooser" className="flex flex-col">
       <div
         role="tablist"
         aria-label={t(I18nKey.BACKEND$CHOOSER_TITLE)}
-        className="grid grid-cols-2 overflow-hidden rounded-lg border border-[var(--oh-border)]"
+        className="grid grid-cols-3 overflow-hidden rounded-lg border border-[var(--oh-border)]"
       >
         <BackendOptionTab
           value="cloud"
@@ -1376,6 +1408,16 @@ function AddBackendChooser({
           onSelect={setSelectedOption}
           panelId={panelId}
           testId="add-backend-option-cloud"
+        />
+        <BackendOptionTab
+          value="sandbox"
+          selectedValue={selectedOption}
+          title={t(I18nKey.BACKEND$SANDBOX_TITLE)}
+          description={t(I18nKey.BACKEND$SANDBOX_OPTION_DESCRIPTION)}
+          icon={<Box className="size-6" />}
+          onSelect={setSelectedOption}
+          panelId={panelId}
+          testId="add-backend-option-sandbox"
         />
         <BackendOptionTab
           value="agent-server"
@@ -1416,6 +1458,27 @@ function AddBackendChooser({
                   testIdRoot="add-backend"
                   analyticsSource={source}
                   showBranding={false}
+                />
+              </div>
+            ) : isSandboxSelected ? (
+              <div
+                data-testid="add-backend-sandbox-panel"
+                className="mx-auto w-full max-w-xl"
+              >
+                <ManualConnectionColumn
+                  onConnected={onConnected}
+                  testIdRoot="add-backend"
+                  requireApiKey
+                  submitLabel={t(I18nKey.BACKEND$CONNECT)}
+                  submittingLabel={t(
+                    I18nKey.ONBOARDING$BACKEND_STATUS_CHECKING,
+                  )}
+                  fixedKind="sandbox"
+                  showKindSelector={false}
+                  hostHint={t(I18nKey.BACKEND$SANDBOX_HOST_HELPER)}
+                  hostPlaceholder={t(I18nKey.BACKEND$SANDBOX_HOST_PLACEHOLDER)}
+                  apiKeyHint={t(I18nKey.BACKEND$SANDBOX_KEY_HELPER)}
+                  apiKeyPlaceholder="••••••••••"
                 />
               </div>
             ) : (
