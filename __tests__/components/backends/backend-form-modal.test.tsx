@@ -17,6 +17,7 @@ import { BackendFormModal } from "#/components/features/backends/backend-form-mo
 
 const getServerInfoMock = vi.hoisted(() => vi.fn());
 const getSettingsMock = vi.hoisted(() => vi.fn().mockResolvedValue({}));
+const fetchMock = vi.hoisted(() => vi.fn<typeof fetch>());
 
 vi.mock("@openhands/typescript-client/clients", () => ({
   ServerClient: vi.fn(function ServerClientMock() {
@@ -68,6 +69,8 @@ function TestSeed({
 
 beforeEach(() => {
   window.localStorage.clear();
+  vi.stubGlobal("fetch", fetchMock);
+  fetchMock.mockReset();
   getServerInfoMock.mockReset();
   getServerInfoMock.mockResolvedValue({ version: "1.28.0" });
   __resetActiveStoreForTests();
@@ -307,5 +310,52 @@ describe("BackendFormModal – edit mode (BackendForm entry point)", () => {
     expect(
       screen.queryByTestId("add-backend-cloud-host"),
     ).not.toBeInTheDocument();
+  });
+
+  it("registers a Sandbox backend after authenticating its control plane", async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }));
+    const onClose = vi.fn();
+
+    renderWithProviders(<BackendFormModal mode="add" onClose={onClose} />);
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("add-backend-option-sandbox"));
+    await user.type(screen.getByTestId("add-backend-name"), "Sandbox");
+    await user.type(
+      screen.getByTestId("add-backend-host"),
+      "https://sandbox.example.test",
+    );
+    await user.type(screen.getByTestId("add-backend-api-key"), "control-key");
+    await user.click(screen.getByTestId("add-backend-submit"));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+
+    const stored = JSON.parse(
+      window.localStorage.getItem("openhands-backends") ?? "[]",
+    );
+    expect(stored).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "Sandbox",
+          host: "https://sandbox.example.test",
+          apiKey: "control-key",
+          kind: "sandbox",
+        }),
+      ]),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "https://sandbox.example.test/health",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "https://sandbox.example.test/api/v1/settings",
+      expect.objectContaining({
+        headers: { "X-Session-API-Key": "control-key" },
+      }),
+    );
   });
 });

@@ -25,6 +25,7 @@ const getSettingsMock = vi.fn();
 const getServerInfoMock = vi.fn();
 const getCurrentCloudApiKeyMock = vi.fn();
 const getCloudOrganizationsMock = vi.fn();
+const fetchMock = vi.hoisted(() => vi.fn<typeof fetch>());
 
 vi.mock("@openhands/typescript-client/clients", () => ({
   ServerClient: vi.fn(function ServerClientMock() {
@@ -58,6 +59,14 @@ const cloudBackend: Backend = {
   kind: "cloud",
 };
 
+const sandboxBackend: Backend = {
+  id: "sandbox-1",
+  name: "Sandbox",
+  host: "https://sandbox.example.test",
+  apiKey: "control-plane-key",
+  kind: "sandbox",
+};
+
 function wrapper({ children }: { children: React.ReactNode }) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -66,6 +75,8 @@ function wrapper({ children }: { children: React.ReactNode }) {
 }
 
 beforeEach(() => {
+  vi.stubGlobal("fetch", fetchMock);
+  fetchMock.mockReset();
   getSettingsMock.mockReset();
   getServerInfoMock.mockReset();
   getServerInfoMock.mockResolvedValue({ version: "1.28.0" });
@@ -193,6 +204,33 @@ describe("useBackendsHealth", () => {
     expect(getSettingsMock).not.toHaveBeenCalled();
   });
 
+  it("probes Sandbox backends with public health and keyed settings", async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }));
+
+    const { result } = renderHook(() => useBackendsHealth([sandboxBackend]), {
+      wrapper,
+    });
+
+    await waitFor(() =>
+      expect(result.current[sandboxBackend.id].isConnected).toBe(true),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "https://sandbox.example.test/health",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "https://sandbox.example.test/api/v1/settings",
+      expect.objectContaining({
+        headers: { "X-Session-API-Key": "control-plane-key" },
+      }),
+    );
+    expect(getCurrentCloudApiKeyMock).not.toHaveBeenCalled();
+  });
+
   it("probes cookie-auth cloud backends via organizations without an API key", async () => {
     const cookieBackend: Backend = {
       ...cloudBackend,
@@ -200,7 +238,10 @@ describe("useBackendsHealth", () => {
       apiKey: "",
       authMode: "cookie",
     };
-    getCloudOrganizationsMock.mockResolvedValue({ items: [], currentOrgId: null });
+    getCloudOrganizationsMock.mockResolvedValue({
+      items: [],
+      currentOrgId: null,
+    });
 
     const { result } = renderHook(() => useBackendsHealth([cookieBackend]), {
       wrapper,

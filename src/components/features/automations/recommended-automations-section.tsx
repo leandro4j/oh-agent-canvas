@@ -39,9 +39,10 @@ import {
   extensionModuleCardSurfaceClassName,
 } from "#/utils/extension-module-card-classes";
 import { StatusBadge } from "./status-badge";
+import type { BackendKind } from "#/api/backend-registry/types";
 
 interface RecommendedAutomationsSectionProps {
-  backendKind: "local" | "cloud";
+  backendKind: BackendKind;
   installedServers: MCPServerConfig[];
   query?: string;
   onSelect: (automation: RecommendedAutomation) => void;

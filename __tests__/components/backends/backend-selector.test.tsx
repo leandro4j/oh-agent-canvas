@@ -193,6 +193,45 @@ describe("BackendSelector", () => {
     expect(screen.getByText("Production")).toBeInTheDocument();
   });
 
+  it("lists a Sandbox backend as a selectable direct backend", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchMock);
+    fetchMock
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }));
+
+    let sandboxId = "";
+    renderWithProviders(
+      <TestSeed
+        onMount={(ctx) => {
+          ctx.addBackend(SEED_LOCAL_1);
+          sandboxId = ctx.addBackend({
+            name: "Sandbox",
+            host: "https://sandbox.example.test",
+            apiKey: "control-plane-key",
+            kind: "sandbox",
+          }).id;
+        }}
+      >
+        <BackendSelector />
+      </TestSeed>,
+    );
+
+    const user = await openDropdown();
+    const sandboxOption = await screen.findByRole("option", {
+      name: /Sandbox/,
+    });
+    await user.click(sandboxOption);
+
+    await waitFor(() => {
+      expect(
+        JSON.parse(
+          window.localStorage.getItem("openhands-active-backend") ?? "null",
+        ),
+      ).toEqual({ backendId: sandboxId, orgId: null });
+    });
+  });
+
   it("expands a cloud backend into one row per org and records the org locally without calling cloud /switch", async () => {
     vi.mocked(getCloudOrganizations).mockResolvedValue({
       items: [

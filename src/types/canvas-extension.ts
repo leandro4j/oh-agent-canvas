@@ -1,3 +1,5 @@
+import type { BackendKind } from "#/api/backend-registry/types";
+
 export const CANVAS_EXTENSION_MANIFEST_SCHEMA_VERSION = 1 as const;
 export const CANVAS_EXTENSION_HOST_API_VERSION = "1" as const;
 
@@ -75,7 +77,7 @@ export interface CanvasExtensionHost {
   }>;
   readonly backend: Readonly<{
     id: string;
-    kind: "local" | "cloud";
+    kind: BackendKind;
     orgId: string | null;
   }>;
   registerPage: (

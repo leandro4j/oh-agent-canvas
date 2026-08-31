@@ -3,8 +3,11 @@ import {
   isCloudBackendApiKeyOrNetworkHealthError,
   isCloudBackendLoggedOutHealthError,
   isInvalidBackendApiKeyHealthError,
+  isSandboxServerUnreachableHealthError,
   isMissingBackendApiKeyHealthError,
 } from "#/hooks/query/use-backends-health";
+import { getBackendCapabilities } from "#/api/backend-registry/capabilities";
+import type { BackendKind } from "#/api/backend-registry/types";
 import { I18nKey } from "#/i18n/declaration";
 import {
   isBackendRequestTimeoutMessage,
@@ -20,16 +23,23 @@ export function getBackendStatusLabel(
   t: TFunction<"openhands">,
   backend:
     | {
-        kind?: "local" | "cloud";
+        kind?: BackendKind;
         apiKey?: string | null;
+        authMode?: "api-key" | "cookie";
       }
     | undefined,
   health: BackendStatusLabelHealth | undefined,
 ): string {
   const lastError = health?.lastError ?? null;
   const isCloud = backend?.kind === "cloud";
+  const capabilities = backend
+    ? getBackendCapabilities(backend.kind ?? "local")
+    : null;
+  const requiresApiKey =
+    capabilities?.usesControlPlane === true &&
+    (!capabilities.usesManagedCloud || backend?.authMode !== "cookie");
 
-  if (isCloud && !backend?.apiKey?.trim()) {
+  if (requiresApiKey && !backend?.apiKey?.trim()) {
     return t(I18nKey.BACKEND$STATUS_DISCONNECTED_ADD_API_KEY);
   }
 
@@ -39,6 +49,10 @@ export function getBackendStatusLabel(
 
   if (isInvalidBackendApiKeyHealthError(lastError)) {
     return t(I18nKey.BACKEND$STATUS_DISCONNECTED_CHECK_API_KEY);
+  }
+
+  if (isSandboxServerUnreachableHealthError(lastError)) {
+    return t(I18nKey.BACKEND$STATUS_DISCONNECTED_CHECK_URL_OR_NETWORK);
   }
 
   if (isCloudBackendLoggedOutHealthError(lastError)) {

@@ -14,6 +14,7 @@ import {
   OH_STATUS_ERROR_COLOR,
   OH_STATUS_SUCCESS_COLOR,
 } from "#/constants/status-colors";
+import type { BackendKind } from "#/api/backend-registry/types";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -188,7 +189,7 @@ export const getFileExtension = (fileName: string): string => {
  */
 export const shouldUseInstallationRepos = (
   provider: Provider | null | undefined,
-  appMode?: "local" | "cloud",
+  appMode?: BackendKind,
 ) => {
   if (!provider) return false;
 

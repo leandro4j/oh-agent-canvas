@@ -48,6 +48,13 @@ describe("backend-registry storage", () => {
         apiKey: "bearer-2",
         kind: "cloud",
       },
+      {
+        id: "sandbox",
+        name: "Sandbox",
+        host: "http://localhost:8000",
+        apiKey: "sandbox-key",
+        kind: "sandbox",
+      },
     ];
 
     writeStoredBackends(backends);
@@ -199,6 +206,23 @@ describe("backend-registry storage", () => {
     expect(readStoredBackends()).toEqual([
       { id: "ok", name: "x", host: "y", apiKey: "z", kind: "local" },
     ]);
+  });
+
+  it("preserves a persisted Sandbox backend", () => {
+    vi.stubEnv("VITE_SESSION_API_KEY", "");
+    const sandboxBackend: Backend = {
+      id: "sandbox",
+      name: "Sandbox",
+      host: "http://localhost:8000",
+      apiKey: "sandbox-key",
+      kind: "sandbox",
+    };
+    window.localStorage.setItem(
+      BACKENDS_STORAGE_KEY,
+      JSON.stringify([sandboxBackend]),
+    );
+
+    expect(readStoredBackends()).toEqual([sandboxBackend]);
   });
 
   it("preserves stored backends without API keys", () => {

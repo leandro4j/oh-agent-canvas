@@ -95,7 +95,7 @@ beforeEach(() => {
     interval: 5,
   });
   deviceFlowMocks.pollForToken.mockReset();
-  deviceFlowMocks.pollForToken.mockImplementation(() => new Promise(() => { }));
+  deviceFlowMocks.pollForToken.mockImplementation(() => new Promise(() => {}));
   __resetActiveStoreForTests();
 });
 
@@ -110,19 +110,24 @@ describe("AddBackendModal – connection chooser", () => {
     renderWithProviders(<AddBackendModal onClose={vi.fn()} />);
 
     const tabs = screen.getAllByRole("tab");
-    expect(tabs).toHaveLength(2);
+    expect(tabs).toHaveLength(3);
     expect(tabs[0]).toHaveAttribute("data-testid", "add-backend-option-cloud");
     expect(tabs[0]).toHaveAttribute("aria-selected", "true");
     expect(tabs[1]).toHaveAttribute(
       "data-testid",
-      "add-backend-option-agent-server",
+      "add-backend-option-sandbox",
     );
     expect(tabs[1]).toHaveAttribute("aria-selected", "false");
+    expect(tabs[2]).toHaveAttribute(
+      "data-testid",
+      "add-backend-option-agent-server",
+    );
+    expect(tabs[2]).toHaveAttribute("aria-selected", "false");
     expect(
       within(tabs[0]).getByTestId("add-backend-option-cloud-logo"),
     ).toBeInTheDocument();
     expect(tabs[0]).toHaveTextContent("BACKEND$CLOUD_OPTION_DESCRIPTION");
-    expect(tabs[1]).toHaveTextContent(
+    expect(tabs[2]).toHaveTextContent(
       "BACKEND$AGENT_SERVER_OPTION_DESCRIPTION",
     );
 

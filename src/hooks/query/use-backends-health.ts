@@ -10,6 +10,12 @@ import {
   validateLocalBackend,
   INVALID_BACKEND_API_KEY_ERROR,
 } from "#/api/agent-server-compatibility";
+import {
+  INVALID_SANDBOX_BACKEND_API_KEY_ERROR,
+  SANDBOX_SERVER_UNREACHABLE_ERROR,
+  validateSandboxBackend,
+} from "#/api/sandbox/sandbox-service.api";
+import { getBackendCapabilities } from "#/api/backend-registry/capabilities";
 import type { Backend } from "#/api/backend-registry/types";
 import {
   isCorsOrNetworkError,
@@ -29,6 +35,10 @@ import { MAX_CONSECUTIVE_FAILURES } from "#/api/backend-registry/health-storage"
 const REFRESH_INTERVAL_MS = 30000;
 const PROBE_TIMEOUT_MS = 4000;
 export { INVALID_BACKEND_API_KEY_ERROR } from "#/api/agent-server-compatibility";
+export {
+  INVALID_SANDBOX_BACKEND_API_KEY_ERROR,
+  SANDBOX_SERVER_UNREACHABLE_ERROR,
+} from "#/api/sandbox/sandbox-service.api";
 export const MISSING_BACKEND_API_KEY_ERROR = "API key required";
 export const CLOUD_BACKEND_API_KEY_OR_NETWORK_ERROR =
   "Cloud API key or network issue";
@@ -37,7 +47,16 @@ export const CLOUD_BACKEND_LOGGED_OUT_ERROR = "Logged out";
 export function isInvalidBackendApiKeyHealthError(
   error: string | null | undefined,
 ): boolean {
-  return error === INVALID_BACKEND_API_KEY_ERROR;
+  return (
+    error === INVALID_BACKEND_API_KEY_ERROR ||
+    error === INVALID_SANDBOX_BACKEND_API_KEY_ERROR
+  );
+}
+
+export function isSandboxServerUnreachableHealthError(
+  error: string | null | undefined,
+): boolean {
+  return error === SANDBOX_SERVER_UNREACHABLE_ERROR;
 }
 
 export function isMissingBackendApiKeyHealthError(
@@ -53,11 +72,11 @@ export function isCloudBackendApiKeyOrNetworkHealthError(
 }
 
 function hasMissingBackendApiKey(backend: Backend): boolean {
-  return (
-    backend.kind === "cloud" &&
-    backend.authMode !== "cookie" &&
-    !backend.apiKey.trim()
-  );
+  const capabilities = getBackendCapabilities(backend);
+  if (capabilities.usesManagedCloud) {
+    return backend.authMode !== "cookie" && !backend.apiKey.trim();
+  }
+  return capabilities.usesControlPlane && !backend.apiKey.trim();
 }
 
 export function isCloudBackendLoggedOutHealthError(
@@ -83,7 +102,9 @@ export function isCloudBackendLoggedOutHealthError(
  * dropdown reads `isSuccess` to flip the indicator green.
  */
 async function probeBackend(backend: Backend): Promise<true> {
-  if (backend.kind === "cloud") {
+  const capabilities = getBackendCapabilities(backend);
+
+  if (capabilities.usesManagedCloud) {
     if (backend.authMode !== "cookie" && !backend.apiKey?.trim()) {
       throw new Error(MISSING_BACKEND_API_KEY_ERROR);
     }
@@ -106,6 +127,11 @@ async function probeBackend(backend: Backend): Promise<true> {
       }
       throw error;
     }
+    return true;
+  }
+
+  if (capabilities.usesControlPlane) {
+    await validateSandboxBackend(backend, PROBE_TIMEOUT_MS);
     return true;
   }
 
@@ -145,6 +171,7 @@ function isRetryableProbeError(error: unknown): boolean {
   if (!(error instanceof Error)) return true;
   return (
     error.message !== INVALID_BACKEND_API_KEY_ERROR &&
+    error.message !== INVALID_SANDBOX_BACKEND_API_KEY_ERROR &&
     error.message !== MISSING_BACKEND_API_KEY_ERROR &&
     error.message !== CLOUD_BACKEND_LOGGED_OUT_ERROR
   );
@@ -219,14 +246,14 @@ export function useBackendsHealth(
   const results = useQueries({
     queries: backends.map((b) => {
       const entry = healthMap[b.id];
-      const hasMissingCloudApiKey = hasMissingBackendApiKey(b);
+      const hasMissingBackendKey = hasMissingBackendApiKey(b);
       const isDisabled = entry?.disabled === true;
       const shouldReprobeStaleCloudNetworkError =
         isDisabled &&
-        b.kind === "cloud" &&
+        getBackendCapabilities(b).usesManagedCloud &&
         isCorsOrNetworkErrorMessage(entry?.lastError);
       const shouldProbe =
-        !hasMissingCloudApiKey &&
+        !hasMissingBackendKey &&
         (!isDisabled ||
           probeDisabledOnce ||
           shouldReprobeStaleCloudNetworkError);
@@ -250,13 +277,13 @@ export function useBackendsHealth(
         },
         enabled: shouldProbe,
         refetchInterval:
-          isDisabled || hasMissingCloudApiKey
+          isDisabled || hasMissingBackendKey
             ? (false as const)
             : REFRESH_INTERVAL_MS,
         refetchIntervalInBackground: false,
         refetchOnMount: isDisabled && probeDisabledOnce ? "always" : true,
-        refetchOnReconnect: !isDisabled && !hasMissingCloudApiKey,
-        refetchOnWindowFocus: !isDisabled && !hasMissingCloudApiKey,
+        refetchOnReconnect: !isDisabled && !hasMissingBackendKey,
+        refetchOnWindowFocus: !isDisabled && !hasMissingBackendKey,
         retry: false,
         // Keep the previous verdict visible while the next probe is in
         // flight so the indicator doesn't flicker on routine polling.
@@ -270,17 +297,17 @@ export function useBackendsHealth(
   backends.forEach((b, i) => {
     const r = results[i];
     const entry = healthMap[b.id];
-    const hasMissingCloudApiKey = hasMissingBackendApiKey(b);
-    const disabled = hasMissingCloudApiKey ? false : entry?.disabled === true;
-    const consecutiveFailures = hasMissingCloudApiKey
+    const hasMissingBackendKey = hasMissingBackendApiKey(b);
+    const disabled = hasMissingBackendKey ? false : entry?.disabled === true;
+    const consecutiveFailures = hasMissingBackendKey
       ? 0
       : (entry?.consecutiveFailures ?? 0);
-    const lastError = hasMissingCloudApiKey
+    const lastError = hasMissingBackendKey
       ? MISSING_BACKEND_API_KEY_ERROR
       : (entry?.lastError ?? null);
 
     let isConnected: boolean | null;
-    if (hasMissingCloudApiKey) {
+    if (hasMissingBackendKey) {
       isConnected = false;
     } else if (disabled) {
       // Polling stopped after hitting the cap — treat as disconnected
