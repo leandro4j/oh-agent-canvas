@@ -106,6 +106,7 @@ export interface AppConversationStartTask {
   status: AppConversationStartTaskStatus;
   detail: string | null;
   app_conversation_id: string | null;
+  sandbox_id?: string | null;
   agent_server_url: string | null;
   request: AppConversationStartRequest;
   created_at: string;

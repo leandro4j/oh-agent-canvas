@@ -36,6 +36,11 @@ export const useWebSocket = (url: string, options?: WebSocketHookOptions) => {
     optionsRef.current = options;
   }, [options]);
 
+  // A Sandbox runtime can be reprovisioned at the same URL with a new session
+  // key. Treat the key as connection identity so the next socket authenticates
+  // with the current runtime credentials instead of reusing the old socket.
+  const sessionApiKey = options?.sessionApiKey;
+
   const connectWebSocket = React.useCallback(() => {
     // Build URL with query parameters if provided
     let wsUrl = url;
@@ -149,7 +154,7 @@ export const useWebSocket = (url: string, options?: WebSocketHookOptions) => {
       setIsConnected(false);
       optionsRef.current?.onError?.(event);
     };
-  }, [url]);
+  }, [url, sessionApiKey]);
 
   React.useEffect(() => {
     // Reset shouldReconnect flag and attempt count when creating a new connection
@@ -186,7 +191,7 @@ export const useWebSocket = (url: string, options?: WebSocketHookOptions) => {
         wsRef.current = null;
       }
     };
-  }, [url, connectWebSocket]);
+  }, [url, connectWebSocket, sessionApiKey]);
 
   const sendMessage = React.useCallback(
     (data: string | Blob | BufferSource) => {

@@ -10,11 +10,15 @@ export async function fetchVerifiedModelsByProvider(): Promise<
   Record<string, string[]>
 > {
   const active = getActiveBackend();
-  if (active.backend.kind === "cloud") {
-    // Cloud backends use /api/v1/config/providers/search and /api/v1/config/models/search,
-    // which return verified status directly on each item. The intermediate
-    // verifiedByProvider map is only used by the local ConfigService reconstruction
-    // logic, so callers can safely treat this empty object as a no-op for cloud.
+  if (active.backend.kind === "cloud" || active.backend.kind === "sandbox") {
+    // Managed backends use /api/v1/config/providers/search and
+    // /api/v1/config/models/search, which return verified status directly on
+    // each item. The intermediate verifiedByProvider map is only used by the
+    // local ConfigService reconstruction logic.
+    //
+    // Cloud backends use these endpoints through the cloud API; Sandbox
+    // backends use them through the control plane. Both can safely return an
+    // empty map here.
     return {};
   }
   const client = new LLMMetadataClient(getAgentServerClientOptions());

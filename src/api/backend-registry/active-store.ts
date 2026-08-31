@@ -6,6 +6,7 @@ import {
   writeStoredBackends,
 } from "./storage";
 import type { Backend, BackendSelection, ResolvedActiveBackend } from "./types";
+import { usesDirectRuntime } from "./capabilities";
 import {
   currentLocationSearch,
   readBackendSelectionFromUrl,
@@ -141,6 +142,19 @@ export function getEffectiveLocalBackend(): Backend | null {
   const active = snapshot.active.backend;
   if (active.kind === "local" && !isNoBackend(active)) return active;
   return null;
+}
+
+/**
+ * Resolve the active backend for direct Agent Server runtime calls.
+ *
+ * A Sandbox backend owns a control plane, but its conversation HTTP and
+ * WebSocket traffic goes directly to the runtime URL returned by that plane.
+ * Keep this separate from `getEffectiveLocalBackend()` so Sandbox never
+ * starts or borrows Canvas's bundled local Agent Server.
+ */
+export function getEffectiveDirectRuntimeBackend(): Backend | null {
+  const active = snapshot.active.backend;
+  return usesDirectRuntime(active) && !isNoBackend(active) ? active : null;
 }
 
 export function getRegisteredBackends(): Backend[] {

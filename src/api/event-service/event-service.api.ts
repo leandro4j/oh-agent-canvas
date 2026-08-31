@@ -5,6 +5,10 @@ import { buildHttpBaseUrl } from "#/utils/websocket-url";
 import { getActiveBackend } from "../backend-registry/active-store";
 import { callCloudProxy } from "../cloud/proxy";
 import {
+  getSandboxConversationEventCount,
+  searchSandboxConversationEvents,
+} from "../sandbox/sandbox-conversation-service.api";
+import {
   getAgentServerClientOptions,
   getAgentServerHttpClientOptions,
 } from "../agent-server-client-options";
@@ -86,6 +90,10 @@ class EventService {
       });
     }
 
+    if (active.kind === "sandbox" && (!conversationUrl || !sessionApiKey)) {
+      return getSandboxConversationEventCount(conversationId);
+    }
+
     return new ConversationClient(
       getAgentServerClientOptions({
         conversationUrl,
@@ -161,6 +169,10 @@ class EventService {
         );
         return { items: [], next_page_id: null };
       }
+    }
+
+    if (active.kind === "sandbox" && (!conversationUrl || !sessionApiKey)) {
+      return searchSandboxConversationEvents(conversationId, options);
     }
 
     const page = await new RemoteEventsList(

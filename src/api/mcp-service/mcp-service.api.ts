@@ -123,6 +123,11 @@ function finalizeMcpTestResponse(
 
 function getMcpProbeOptions(): { host: string; apiKey?: string } {
   const active = getActiveBackend().backend;
+  if (active.kind === "sandbox") {
+    throw new Error(
+      "OAuth authorization requires a running Sandbox conversation.",
+    );
+  }
   if (active.kind === "local") {
     const { host, apiKey } = getAgentServerClientOptions();
     return { host, ...(apiKey ? { apiKey } : {}) };
@@ -190,7 +195,7 @@ class McpService {
     // is configured.")` and block the install flow entirely. Short-circuit
     // with a synthetic success so saving proceeds; any real connection
     // failure surfaces inside the conversation runtime instead.
-    if (getActiveBackend().backend.kind === "cloud") {
+    if (["cloud", "sandbox"].includes(getActiveBackend().backend.kind)) {
       return { ok: true, tools: [] };
     }
     const validation = getCredentialValidationForServer(server);

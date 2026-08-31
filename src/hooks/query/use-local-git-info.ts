@@ -7,6 +7,7 @@ import { useActiveConversation } from "#/hooks/query/use-active-conversation";
 import { useRuntimeIsReady } from "#/hooks/use-runtime-is-ready";
 import { useBashCommandRunner } from "#/hooks/use-bash-command-runner";
 import { Provider } from "#/types/settings";
+import { getGitPath } from "#/utils/get-git-path";
 import { parseGitRemoteUrl } from "#/utils/parse-git-remote-url";
 
 export interface LocalGitInfo {
@@ -75,18 +76,18 @@ async function probeGitInfo(
 }
 
 /**
- * Probe git metadata for a **local** backend's workspace checkout by
+ * Probe git metadata for a direct-runtime backend's workspace checkout by
  * shelling out via the agent server using a single consolidated bash
  * script (see `GIT_INFO_COMMAND`).
  *
- * Local-only by design. On cloud backends the conversation metadata
+ * Managed Cloud is excluded by design. Its conversation metadata
  * (`selected_repository`, `git_provider`, `selected_branch`) is the
  * source of truth, and probing via `/api/bash/execute_bash_command`
  * would (a) leak the user's local `getAgentServerWorkingDir()` path to
  * the cloud runtime when `workspace.working_dir` is missing, and
  * (b) hit a bash endpoint we don't want the frontend driving on cloud.
  *
- * On local, we keep the probe enabled until the active conversation
+ * On local and Sandbox, we keep the probe enabled until the active conversation
  * has a complete repo tuple so the control bar can recover from
  * partial metadata hydration after connect/clone flows.
  *
@@ -97,21 +98,33 @@ export const useLocalGitInfo = () => {
   const { data: conversation } = useActiveConversation();
   const runtimeIsReady = useRuntimeIsReady();
   const { backend } = useActiveBackend();
-  const isLocalBackend = backend.kind === "local";
+  const usesDirectRuntime =
+    backend.kind === "local" || backend.kind === "sandbox";
 
   const conversationId = conversation?.id;
   const conversationUrl = conversation?.conversation_url;
   const sessionApiKey = conversation?.session_api_key;
-  const workingDir = conversation?.workspace?.working_dir?.trim();
+  const configuredWorkingDir = conversation?.workspace?.working_dir?.trim();
+  const sandboxWorkingDir = getGitPath(
+    conversation?.selected_repository,
+    configuredWorkingDir,
+  );
+  const workingDir =
+    backend.kind === "sandbox"
+      ? sandboxWorkingDir.startsWith("/")
+        ? sandboxWorkingDir
+        : `/${sandboxWorkingDir}`
+      : configuredWorkingDir;
   const hasConversationRepo = !!conversation?.selected_repository;
   const hasConversationProvider = !!conversation?.git_provider;
   const hasConversationBranch = !!conversation?.selected_branch;
 
   const queryEnabled =
-    isLocalBackend &&
+    usesDirectRuntime &&
     runtimeIsReady &&
     !!conversationId &&
     !!workingDir &&
+    (backend.kind !== "sandbox" || (!!conversationUrl && !!sessionApiKey)) &&
     (!hasConversationRepo ||
       !hasConversationProvider ||
       !hasConversationBranch);
@@ -131,9 +144,6 @@ export const useLocalGitInfo = () => {
   const runCommandRef = useRef(runCommand);
   runCommandRef.current = runCommand;
 
-  // runCommandRef is a ref (always stable); the linter cannot infer this so
-  // we disable the exhaustive-deps check here.
-  // eslint-disable-next-line @tanstack/query/exhaustive-deps
   return useQuery<LocalGitInfo>({
     queryKey: [
       "local-git-info",

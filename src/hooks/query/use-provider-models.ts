@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import ConfigService from "#/api/config-service/config-service.api";
+import { useActiveBackend } from "#/contexts/active-backend-context";
 import type { LLMModel } from "#/api/config-service/config-service.types";
 import {
   VERIFIED_MODELS_GC_TIME,
@@ -41,12 +42,20 @@ async function fetchPage(
   return page.items;
 }
 
-export const useProviderModels = (provider: string | null) =>
-  useQuery({
-    queryKey: ["config", "models", provider],
+export const useProviderModels = (provider: string | null) => {
+  const { backend, orgId } = useActiveBackend();
+  const backendQueryKey = [
+    backend.id,
+    backend.kind,
+    backend.connectionRevision ?? 0,
+    orgId,
+  ];
+
+  return useQuery({
+    queryKey: ["config", "models", provider, ...backendQueryKey],
     queryFn: async ({ client }) => {
       const verifiedByProvider = await client.fetchQuery({
-        queryKey: VERIFIED_MODELS_QUERY_KEY,
+        queryKey: [...VERIFIED_MODELS_QUERY_KEY, ...backendQueryKey],
         queryFn: fetchVerifiedModelsByProvider,
         staleTime: VERIFIED_MODELS_STALE_TIME,
       });
@@ -56,3 +65,4 @@ export const useProviderModels = (provider: string | null) =>
     staleTime: VERIFIED_MODELS_STALE_TIME,
     gcTime: VERIFIED_MODELS_GC_TIME,
   });
+};

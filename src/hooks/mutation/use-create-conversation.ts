@@ -257,7 +257,7 @@ export const useCreateConversation = () => {
       //      local conversation (see use-set-plugin-enabled).
       const explicitPlugins = plugins?.map(toPluginCoordinates) ?? [];
       let attachedPlugins: PluginSpec[] = explicitPlugins;
-      if (localConversationId) {
+      if (localConversationId && backend.kind === "local") {
         let installed: InstalledPluginInfo[] = [];
         try {
           installed = await queryClient.ensureQueryData({

@@ -16,14 +16,26 @@ import type { ConversationRuntimeContext } from "#/api/conversation-file-upload.
 import { buildHttpBaseUrl } from "#/utils/websocket-url";
 import {
   buildConversationWorkingDirForBackend,
+  DEFAULT_WORKING_DIR,
   getAgentServerWorkingDir,
 } from "../agent-server-config";
+import { getGitPath } from "#/utils/get-git-path";
 import { resolveAbsoluteAgentServerPath } from "../agent-server-home";
 import {
   getActiveBackend,
   getEffectiveLocalBackend,
 } from "../backend-registry/active-store";
 import { callCloudProxy } from "../cloud/proxy";
+import {
+  batchGetSandboxConversations,
+  createSandboxConversation,
+  deleteSandboxConversation,
+  downloadSandboxConversation,
+  getSandboxConversationStartTask,
+  searchSandboxConversations,
+  updateSandboxConversationTitle,
+} from "../sandbox/sandbox-conversation-service.api";
+import { getSandboxExposedUrl } from "../sandbox/sandbox-control-plane.api";
 import ProfilesService from "../profiles-service/profiles-service.api";
 import {
   batchGetCloudConversations,
@@ -245,6 +257,17 @@ function requirePathInsideDirectory(path: string, directory: string): string {
   return normalizedPath;
 }
 
+function getSandboxConversationWorkingDir(
+  conversation: AppConversation | null | undefined,
+): string {
+  const path =
+    conversation?.workspace?.working_dir?.trim() ||
+    (conversation?.selected_repository
+      ? getGitPath(conversation.selected_repository, undefined)
+      : DEFAULT_WORKING_DIR);
+  return path.startsWith("/") ? path : `/${path}`;
+}
+
 function requireDirectConversationInfo(item: unknown): DirectConversationInfo {
   if (!isRecord(item) || typeof item.id !== "string" || !item.id.trim()) {
     throw invalidConversationResponse();
@@ -393,6 +416,20 @@ class AgentServerConversationService {
       return message;
     }
 
+    if (active.kind === "sandbox" && (!conversationUrl || !sessionApiKey)) {
+      const [conversation] = await batchGetSandboxConversations([
+        conversationId,
+      ]);
+      conversationUrl = conversation?.conversation_url?.trim() ?? null;
+      sessionApiKey = conversation?.session_api_key?.trim() ?? null;
+    }
+
+    if (active.kind === "sandbox" && (!conversationUrl || !sessionApiKey)) {
+      throw new Error(
+        "Conversation sandbox is still starting. Wait for it to finish, then try again.",
+      );
+    }
+
     await new ConversationClient(
       getAgentServerClientOptions({ conversationUrl, sessionApiKey }),
     ).sendEvent(conversationId, message, {
@@ -419,7 +456,32 @@ class AgentServerConversationService {
       agentProfileKind,
     } = options;
 
-    if (getActiveBackend().backend.kind === "cloud") {
+    const activeBackend = getActiveBackend().backend;
+
+    const request: AppConversationStartRequest = {
+      initial_message: initialUserMsg
+        ? {
+            role: "user",
+            content: [{ type: "text", text: initialUserMsg }],
+          }
+        : null,
+      title: conversationInstructions ?? null,
+      selected_repository: metadata?.selected_repository ?? null,
+      selected_branch: metadata?.selected_branch ?? null,
+      git_provider: metadata?.git_provider ?? null,
+      plugins: plugins ?? null,
+      parent_conversation_id: parentConversationId ?? null,
+      agent_type: agentType,
+      sandbox_id: sandboxId ?? null,
+      agent_profile_id: agentProfileId ?? null,
+      trigger: "gui",
+    };
+
+    if (activeBackend.kind === "sandbox") {
+      return createSandboxConversation(request);
+    }
+
+    if (activeBackend.kind === "cloud") {
       // Cloud path mirrors OpenHands' frontend: build a flat
       // AppConversationStartRequest, POST /api/v1/app-conversations
       // (returns a WORKING task), and let the conversation route's
@@ -427,24 +489,6 @@ class AgentServerConversationService {
       // round-trip — the cloud backend holds secrets server-side.
       // When launching from a profile, send `agent_profile_id`; the backend
       // resolves it to agent_settings server-side.
-      const request: AppConversationStartRequest = {
-        initial_message: initialUserMsg
-          ? {
-              role: "user",
-              content: [{ type: "text", text: initialUserMsg }],
-            }
-          : null,
-        title: conversationInstructions ?? null,
-        selected_repository: metadata?.selected_repository ?? null,
-        selected_branch: metadata?.selected_branch ?? null,
-        git_provider: metadata?.git_provider ?? null,
-        plugins: plugins ?? null,
-        parent_conversation_id: parentConversationId ?? null,
-        agent_type: agentType,
-        sandbox_id: sandboxId ?? null,
-        agent_profile_id: agentProfileId ?? null,
-        trigger: "gui",
-      };
       return createCloudAppConversation(request);
     }
 
@@ -554,7 +598,11 @@ class AgentServerConversationService {
   static async getStartTask(
     taskId: string,
   ): Promise<AppConversationStartTask | null> {
-    if (getActiveBackend().backend.kind === "cloud") {
+    const activeBackend = getActiveBackend().backend;
+    if (activeBackend.kind === "sandbox") {
+      return getSandboxConversationStartTask(taskId);
+    }
+    if (activeBackend.kind === "cloud") {
       return getCloudAppConversationStartTask(taskId);
     }
     // Local agent-server creates conversations synchronously — every
@@ -568,6 +616,27 @@ class AgentServerConversationService {
     conversationUrl: string | null | undefined,
     sessionApiKey?: string | null,
   ): Promise<GetVSCodeUrlResponse> {
+    const activeBackend = getActiveBackend().backend;
+
+    if (activeBackend.kind === "sandbox") {
+      const [conversation] = await this.batchGetAppConversations([
+        conversationId,
+      ]);
+      if (
+        !conversation?.sandbox_id ||
+        conversation.sandbox_status !== "RUNNING"
+      ) {
+        return { vscode_url: null };
+      }
+
+      return {
+        vscode_url: await getSandboxExposedUrl(
+          conversation.sandbox_id,
+          "VSCODE",
+        ),
+      };
+    }
+
     // Local-only path. Cloud conversations read the VSCode URL straight
     // from the cloud-computed `sandbox.exposed_urls` (see
     // `useUnifiedVSCodeUrl` + `useCloudSandbox`); the runtime's own
@@ -618,6 +687,9 @@ class AgentServerConversationService {
     const [conversation] = await this.batchGetAppConversations([
       conversationId,
     ]);
+    if (getActiveBackend().backend.kind === "sandbox") {
+      return getSandboxConversationWorkingDir(conversation);
+    }
     return conversation?.workspace?.working_dir ?? getAgentServerWorkingDir();
   }
 
@@ -626,7 +698,11 @@ class AgentServerConversationService {
   ): Promise<(AppConversation | null)[]> {
     if (ids.length === 0) return [];
 
-    if (getActiveBackend().backend.kind === "cloud") {
+    const activeBackend = getActiveBackend().backend;
+    if (activeBackend.kind === "sandbox") {
+      return batchGetSandboxConversations(ids);
+    }
+    if (activeBackend.kind === "cloud") {
       return batchGetCloudConversations(ids);
     }
 
@@ -678,13 +754,31 @@ class AgentServerConversationService {
   ): Promise<string> {
     if (getActiveBackend().backend.kind === "cloud") {
       // Cloud exposes a per-conversation file endpoint; the sandbox
-      // working dir is fixed (`/workspace/project`), so PLAN.md lives at
+      // working dir is fixed (`/${DEFAULT_WORKING_DIR}`), so PLAN.md lives at
       // a known absolute path. Mirrors OpenHands' readConversationFile.
+      const defaultWorkingDir = `/${DEFAULT_WORKING_DIR}`;
       const path = requirePathInsideDirectory(
-        filePath ?? "/workspace/project/.agents_tmp/PLAN.md",
-        "/workspace/project",
+        filePath ?? `${defaultWorkingDir}/.agents_tmp/PLAN.md`,
+        defaultWorkingDir,
       );
       return readCloudConversationFile(conversationId, path);
+    }
+
+    if (getActiveBackend().backend.kind === "sandbox") {
+      const [conversation] = await this.batchGetAppConversations([
+        conversationId,
+      ]);
+      const workingDir = getSandboxConversationWorkingDir(conversation);
+      const path = requirePathInsideDirectory(
+        filePath ?? `${workingDir}/.agents_tmp/PLAN.md`,
+        workingDir,
+      );
+      return new FileClient(
+        getAgentServerClientOptions({
+          conversationUrl: conversation?.conversation_url,
+          sessionApiKey: conversation?.session_api_key,
+        }),
+      ).downloadTextFile(path);
     }
 
     const workingDir = await this.resolveConversationWorkingDir(conversationId);
@@ -696,8 +790,12 @@ class AgentServerConversationService {
   }
 
   static async downloadConversation(conversationId: string): Promise<Blob> {
-    if (getActiveBackend().backend.kind === "cloud") {
+    const activeBackend = getActiveBackend().backend;
+    if (activeBackend.kind === "cloud") {
       return downloadCloudConversation(conversationId);
+    }
+    if (activeBackend.kind === "sandbox") {
+      return downloadSandboxConversation(conversationId);
     }
 
     return new FileClient(getAgentServerClientOptions()).downloadTrajectory(
@@ -773,7 +871,11 @@ class AgentServerConversationService {
     limit: number = 20,
     pageId?: string,
   ): Promise<AppConversationPage> {
-    if (getActiveBackend().backend.kind === "cloud") {
+    const activeBackend = getActiveBackend().backend;
+    if (activeBackend.kind === "sandbox") {
+      return searchSandboxConversations(limit, pageId);
+    }
+    if (activeBackend.kind === "cloud") {
       return searchCloudConversations(limit, pageId);
     }
 
@@ -789,7 +891,10 @@ class AgentServerConversationService {
   }
 
   static async deleteConversation(conversationId: string): Promise<void> {
-    if (getActiveBackend().backend.kind === "cloud") {
+    const activeBackend = getActiveBackend().backend;
+    if (activeBackend.kind === "sandbox") {
+      await deleteSandboxConversation(conversationId);
+    } else if (activeBackend.kind === "cloud") {
       await deleteCloudConversation(conversationId);
     } else {
       await new ConversationClient(
@@ -803,7 +908,11 @@ class AgentServerConversationService {
     conversationId: string,
     title: string,
   ): Promise<AppConversation> {
-    if (getActiveBackend().backend.kind === "cloud") {
+    const activeBackend = getActiveBackend().backend;
+    if (activeBackend.kind === "sandbox") {
+      return updateSandboxConversationTitle(conversationId, title);
+    }
+    if (activeBackend.kind === "cloud") {
       return updateCloudConversationTitle(conversationId, title);
     }
 
@@ -828,9 +937,9 @@ class AgentServerConversationService {
     fromEventId: string,
     title?: string,
   ): Promise<DirectConversationInfo> {
-    if (getActiveBackend().backend.kind === "cloud") {
+    if (["cloud", "sandbox"].includes(getActiveBackend().backend.kind)) {
       throw new Error(
-        "Branching a conversation isn't supported on the cloud backend yet.",
+        "Branching a conversation isn't supported on this backend.",
       );
     }
 
@@ -864,6 +973,25 @@ class AgentServerConversationService {
     conversationId: string,
     eventId: string,
   ): Promise<string | undefined> {
+    const activeBackend = getActiveBackend().backend;
+    if (activeBackend.kind === "sandbox") {
+      const [conversation] = await this.batchGetAppConversations([
+        conversationId,
+      ]);
+      if (!conversation?.conversation_url || !conversation.session_api_key) {
+        throw new Error(
+          "Conversation sandbox is not running. Resume it before branching.",
+        );
+      }
+      const event = (await new ConversationClient(
+        getAgentServerClientOptions({
+          conversationUrl: conversation.conversation_url,
+          sessionApiKey: conversation.session_api_key,
+        }),
+      ).getEvent(conversationId, eventId)) as { parent_id?: string | null };
+      return event.parent_id ?? undefined;
+    }
+
     const event = (await new ConversationClient(
       getAgentServerClientOptions(),
     ).getEvent(conversationId, eventId)) as { parent_id?: string | null };
@@ -907,6 +1035,29 @@ class AgentServerConversationService {
         path: `/api/v1/app-conversations/${conversationId}/switch_profile`,
         body: { profile_name: profileName },
       });
+      return;
+    }
+
+    if (backend.kind === "sandbox") {
+      if (!conversationId) {
+        await ProfilesService.activateProfile(profileName);
+        return;
+      }
+
+      const [conversation] = await this.batchGetAppConversations([
+        conversationId,
+      ]);
+      if (!conversation?.conversation_url || !conversation.session_api_key) {
+        throw new Error(
+          "Conversation sandbox is not running. Resume it before switching profiles.",
+        );
+      }
+      await new ConversationClient(
+        getAgentServerClientOptions({
+          conversationUrl: conversation.conversation_url,
+          sessionApiKey: conversation.session_api_key,
+        }),
+      ).switchProfile(conversationId, profileName);
       return;
     }
 
@@ -963,6 +1114,24 @@ class AgentServerConversationService {
         path: `/api/v1/app-conversations/${conversationId}/switch_acp_model`,
         body: { model },
       });
+      return;
+    }
+
+    if (backend.kind === "sandbox") {
+      const [conversation] = await this.batchGetAppConversations([
+        conversationId,
+      ]);
+      if (!conversation?.conversation_url || !conversation.session_api_key) {
+        throw new Error(
+          "Conversation sandbox is not running. Resume it before switching models.",
+        );
+      }
+      await new ConversationClient(
+        getAgentServerClientOptions({
+          conversationUrl: conversation.conversation_url,
+          sessionApiKey: conversation.session_api_key,
+        }),
+      ).switchAcpModel(conversationId, model);
       return;
     }
 

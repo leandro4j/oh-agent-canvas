@@ -23,6 +23,7 @@ import {
   schedulePendingTaskMessageReassign,
 } from "#/utils/pending-task-message-link";
 import { useBackendScopedPath } from "#/hooks/use-backend-scoped-path";
+import { getActiveBackend } from "#/api/backend-registry/active-store";
 
 const storeTaskPlugins = (
   task: AppConversationStartTask,
@@ -62,6 +63,7 @@ export const useTaskPolling = () => {
   // Optional: the chat input shell renders on the home page too; polling
   // simply no-ops when there's no conversation id yet.
   const { conversationId } = useOptionalConversationId();
+  const activeBackend = getActiveBackend();
 
   // Check if this is a task ID (format: "task-{uuid}")
   const isTask = !!conversationId && conversationId.startsWith("task-");
@@ -69,7 +71,12 @@ export const useTaskPolling = () => {
 
   // Poll the task if this is a task ID
   const taskQuery = useQuery({
-    queryKey: ["start-task", taskId],
+    queryKey: [
+      "start-task",
+      taskId,
+      activeBackend.backend.id,
+      activeBackend.orgId,
+    ],
     queryFn: async () => {
       if (!taskId) return null;
       return AgentServerConversationService.getStartTask(taskId);
@@ -153,7 +160,9 @@ export const useTaskPollingController = () => {
     }
 
     handledReadyTaskIdRef.current = taskId;
-    trackCloudConversationReady(taskId, appConversationId);
+    if (getActiveBackend().backend.kind === "cloud") {
+      trackCloudConversationReady(taskId, appConversationId);
+    }
     storeTaskPlugins(task, appConversationId);
 
     void (async () => {

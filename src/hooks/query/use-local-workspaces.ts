@@ -4,6 +4,7 @@ import { isAgentServerVersionError } from "@openhands/typescript-client/clients"
 import WorkspacesService, {
   WorkspacesListResponse,
 } from "#/api/workspaces-service/workspaces-service.api";
+import { useActiveBackend } from "#/contexts/active-backend-context";
 import { LOCAL_WORKSPACES_QUERY_KEYS } from "#/hooks/query/query-keys";
 
 interface UseLocalWorkspacesOptions {
@@ -13,10 +14,13 @@ interface UseLocalWorkspacesOptions {
 export function useLocalWorkspaces({
   enabled = true,
 }: UseLocalWorkspacesOptions = {}) {
+  const { backend, orgId } = useActiveBackend();
   return useQuery<WorkspacesListResponse>({
-    queryKey: LOCAL_WORKSPACES_QUERY_KEYS.all,
+    queryKey: [...LOCAL_WORKSPACES_QUERY_KEYS.all, backend.id, orgId],
     queryFn: () => WorkspacesService.listWorkspaces(),
-    enabled,
+    // Sandbox Server has no host-workspace registry. Its workspace is created
+    // from the conversation request inside the managed runtime.
+    enabled: enabled && backend.kind === "local",
     retry: (failureCount, error) =>
       !isAgentServerVersionError(error) && failureCount < 3,
     meta: { disableToast: true },

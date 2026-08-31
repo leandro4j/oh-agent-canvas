@@ -19,7 +19,7 @@ export const useLLMBalance = (conversationId: string | null | undefined) => {
     queryFn: () => LLMBalanceService.getBalance(),
     // Cloud conversations talk to the hosted app API, which has no
     // /api/llm/balance endpoint — don't probe it.
-    enabled: backend.kind !== "cloud" && !!conversationId,
+    enabled: backend.kind === "local" && !!conversationId,
     staleTime: Infinity,
     gcTime: 1000 * 60 * 5,
     retry: false,

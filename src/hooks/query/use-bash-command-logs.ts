@@ -9,7 +9,7 @@ import { useUserConversation } from "./use-user-conversation";
 export const BASH_COMMAND_LOGS_QUERY_KEY = ["bash-command-logs"] as const;
 
 /**
- * Reasons the modal can't fetch logs from a cloud sandbox, in priority
+ * Reasons the modal can't fetch logs from a managed runtime, in priority
  * order. The hook surfaces at most one of these so the UI can render a
  * targeted message instead of a raw error.
  */
@@ -33,7 +33,7 @@ interface UseBashCommandLogsOptions {
 }
 
 /**
- * Map a cloud sandbox status to a stable issue code (or null when the
+ * Map a managed runtime status to a stable issue code (or null when the
  * sandbox is healthy enough to attempt the fetch).
  */
 function sandboxIssueFromStatus(
@@ -57,8 +57,8 @@ function sandboxIssueFromStatus(
 }
 
 /**
- * Detect "the runtime is unreachable" errors from the cloud proxy. The
- * proxy itself returns 5xx when the upstream sandbox is gone; runtimes
+ * Detect "the runtime is unreachable" errors from a proxy or direct runtime.
+ * The proxy itself returns 5xx when the upstream sandbox is gone; runtimes
  * return 4xx/5xx for various ephemeral states. We classify 5xx and
  * network errors as "unreachable" so the modal can render the
  * sandbox-gone state instead of dumping a raw error. Cloud calls go
@@ -107,7 +107,7 @@ function classifyFetchError(error: unknown): SandboxIssue | null {
  *   those are passed through, but a missing/stale conversation does not
  *   block the bash query (the local agent-server hosts events under a
  *   single root).
- * - **Cloud backend**: pre-checks `sandbox_status` and the existence of
+ * - **Managed runtime backends**: pre-check `sandbox_status` and the existence of
  *   a `conversation_url` before firing — paused, starting, errored, or
  *   missing sandboxes report a `sandboxIssue` and skip the request
  *   entirely (saves a doomed round-trip and gives the UI a targeted
@@ -128,15 +128,16 @@ export function useBashCommandLogs(options: UseBashCommandLogsOptions) {
   const conversationUrl = conversation?.conversation_url ?? null;
   const sessionApiKey = conversation?.session_api_key ?? null;
 
-  const isCloud = active.backend.kind === "cloud";
+  const isManagedRuntime =
+    active.backend.kind === "cloud" || active.backend.kind === "sandbox";
   const conversationFetched = conversationQuery.isFetched;
 
-  // Resolve a single "sandbox issue" only for cloud backends. Local
+  // Resolve a single "sandbox issue" only for managed runtime backends. Local
   // backends don't carry sandbox_status, and the agent-server hosts
   // events under a single root so there's nothing to gate on.
   let preflightIssue: SandboxIssue | null = null;
   let conversationMissing = false;
-  if (isCloud && conversationFetched) {
+  if (isManagedRuntime && conversationFetched) {
     if (!conversation) {
       conversationMissing = true;
     } else {
@@ -146,9 +147,14 @@ export function useBashCommandLogs(options: UseBashCommandLogsOptions) {
     }
   }
 
-  // Cloud needs the conversation URL before it can talk to the
-  // runtime; local does not.
-  const hasRequiredAuth = isCloud ? !!conversationUrl : true;
+  // Managed runtime backends need the conversation URL and its matching key;
+  // local agent-server conversations can use the shared backend host.
+  const hasRequiredAuth =
+    active.backend.kind === "sandbox"
+      ? !!conversationUrl && !!sessionApiKey
+      : isManagedRuntime
+        ? !!conversationUrl
+        : true;
   const canFire =
     enabled &&
     !!bashCommandId &&
@@ -182,7 +188,7 @@ export function useBashCommandLogs(options: UseBashCommandLogsOptions) {
   // If the request fired and failed in a way that suggests the
   // sandbox is gone/unreachable, surface it as a sandbox issue so the
   // modal can render the matching empty state instead of a raw error.
-  const fetchIssue = isCloud ? classifyFetchError(query.error) : null;
+  const fetchIssue = isManagedRuntime ? classifyFetchError(query.error) : null;
   const sandboxIssue: SandboxIssue | null = preflightIssue ?? fetchIssue;
 
   return {
@@ -196,8 +202,8 @@ export function useBashCommandLogs(options: UseBashCommandLogsOptions) {
     isFetching: query.isFetching,
     isPending: query.isPending,
     /** True while we're still resolving the conversation runtime URL. */
-    isResolvingConversation: isCloud && conversationQuery.isPending,
-    /** Cloud-only: conversation lookup failed (deleted or no access). */
+    isResolvingConversation: isManagedRuntime && conversationQuery.isPending,
+    /** Managed-runtime only: conversation lookup failed (deleted or no access). */
     conversationMissing,
     /**
      * Reason the bash query couldn't / didn't usefully complete. Always

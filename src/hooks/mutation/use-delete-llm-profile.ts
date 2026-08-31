@@ -13,7 +13,7 @@ export function useDeleteLlmProfile() {
   return useMutation({
     mutationFn: (name: string) => ProfilesService.deleteProfile(name),
     onSuccess: async (_response, name) => {
-      if (getActiveBackend().backend.kind === "local") {
+      if (["local", "sandbox"].includes(getActiveBackend().backend.kind)) {
         const settings = await SettingsService.getSettings();
         if (settings?.title_llm_profile === name) {
           await SettingsService.saveSettings({ title_llm_profile: null });

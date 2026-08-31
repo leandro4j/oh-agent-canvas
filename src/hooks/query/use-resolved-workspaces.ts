@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useQueries } from "@tanstack/react-query";
 import { isAgentServerVersionError } from "@openhands/typescript-client/clients";
 
+import { useActiveBackend } from "#/contexts/active-backend-context";
 import { useLocalWorkspaces } from "#/hooks/query/use-local-workspaces";
 import { searchAllSubdirectories } from "#/hooks/query/use-search-subdirs";
 import { LocalWorkspace, LocalWorkspaceParent } from "#/types/workspace";
@@ -50,6 +51,8 @@ const IMPLICIT_WORKSPACE_PARENTS: LocalWorkspaceParent[] = [
  * same path so that user-selected names/ids are preserved.
  */
 export function useResolvedWorkspaces(): UseResolvedWorkspacesResult {
+  const { backend } = useActiveBackend();
+  const isLocalBackend = backend.kind === "local";
   const {
     data,
     isLoading: isLoadingList,
@@ -67,12 +70,14 @@ export function useResolvedWorkspaces(): UseResolvedWorkspacesResult {
     // Filter out implicit parents that conflict with user-added ones (by path)
     // so custom names/ids are preserved.
     const implicitParents =
-      INCLUDE_IMPLICIT_WORKSPACE_PARENTS && !workspacesUnsupported
+      INCLUDE_IMPLICIT_WORKSPACE_PARENTS &&
+      isLocalBackend &&
+      !workspacesUnsupported
         ? IMPLICIT_WORKSPACE_PARENTS
         : [];
     const extras = implicitParents.filter((p) => !seen.has(p.path));
     return extras.length === 0 ? storedParents : [...storedParents, ...extras];
-  }, [storedParents, workspacesUnsupported]);
+  }, [isLocalBackend, storedParents, workspacesUnsupported]);
 
   const parentQueries = useQueries({
     queries: workspacesUnsupported

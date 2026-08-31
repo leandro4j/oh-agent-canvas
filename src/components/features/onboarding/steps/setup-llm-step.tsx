@@ -44,6 +44,8 @@ export function SetupLlmStep({ onBack, onNext }: SetupLlmStepProps) {
   const { t } = useTranslation("openhands");
   const { backend } = useActiveBackend();
   const isLocalBackend = backend.kind === "local";
+  const isProfileBackend =
+    backend.kind === "local" || backend.kind === "sandbox";
   const saveProfile = useSaveLlmProfile();
   const activateProfile = useActivateLlmProfile();
   const applyAgentProfile = useApplyOnboardingAgentProfile();
@@ -51,7 +53,7 @@ export function SetupLlmStep({ onBack, onNext }: SetupLlmStepProps) {
     React.useState<SdkSectionSaveControl | null>(null);
   const [isFinalizing, setIsFinalizing] = React.useState(false);
 
-  // On local backends the LLM profiles list is the user-facing source of
+  // On profile-backed runtimes the LLM profiles list is the user-facing source of
   // truth; without this step the form save only updates agent_settings and
   // the new config never shows up in the profiles list ("ghost profile").
   // Returns the saved LLM profile name so the caller can point the active
@@ -60,7 +62,7 @@ export function SetupLlmStep({ onBack, onNext }: SetupLlmStepProps) {
   const persistAsProfile = React.useCallback(async (): Promise<
     string | null
   > => {
-    if (!isLocalBackend || !saveControl) return null;
+    if (!isProfileBackend || !saveControl) return null;
     const values = saveControl.values;
     const model =
       typeof values["llm.model"] === "string" ? values["llm.model"] : "";
@@ -90,7 +92,7 @@ export function SetupLlmStep({ onBack, onNext }: SetupLlmStepProps) {
       console.error("Failed to persist onboarding LLM as profile:", error);
       return null;
     }
-  }, [isLocalBackend, saveControl, saveProfile, activateProfile]);
+  }, [isProfileBackend, saveControl, saveProfile, activateProfile]);
 
   const handleSaveSuccess = React.useCallback(async () => {
     setIsFinalizing(true);
@@ -101,14 +103,15 @@ export function SetupLlmStep({ onBack, onNext }: SetupLlmStepProps) {
       // banner clears). Without this the active agent profile keeps its
       // seeded llm_profile_ref, which has no key.
       //
-      // Cloud intentionally skips this: `persistAsProfile` only creates/activates
-      // a *local* LLM profile (it early-returns null off local backends), and on
-      // cloud the agent-profile ↔ LLM wiring is resolved server-side from the
-      // settings this step's form save already persisted — there is no
-      // client-writable cloud agent-profile ref to repoint here. The ACP step
-      // still calls applyAgentProfile because ACP agents carry no LLM ref and
-      // persist their kind/model locally regardless of backend.
-      if (llmProfileName) {
+      // Cloud intentionally skips this: its agent-profile ↔ LLM wiring is
+      // resolved server-side from the settings this step's form save already
+      // persisted — there is no client-writable cloud agent-profile ref to
+      // repoint here. Local and Sandbox profile stores have already activated
+      // the saved LLM profile; only local also has a writable Agent profile
+      // ref to update. The ACP step still calls applyAgentProfile because ACP
+      // agents carry no LLM ref and persist their kind/model locally
+      // regardless of backend.
+      if (llmProfileName && isLocalBackend) {
         await applyAgentProfile({
           agent_kind: "openhands",
           llm_profile_ref: llmProfileName,
@@ -118,7 +121,7 @@ export function SetupLlmStep({ onBack, onNext }: SetupLlmStepProps) {
       setIsFinalizing(false);
       onNext();
     }
-  }, [persistAsProfile, applyAgentProfile, onNext]);
+  }, [persistAsProfile, applyAgentProfile, isLocalBackend, onNext]);
 
   const handleNext = () => {
     if (saveControl?.isDirty) {

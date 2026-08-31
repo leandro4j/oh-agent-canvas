@@ -4,15 +4,16 @@ import AgentServerRuntimeService from "#/api/runtime-service/agent-server-runtim
 import { useActiveBackend } from "#/contexts/active-backend-context";
 import { useActiveConversation } from "#/hooks/query/use-active-conversation";
 import { useRuntimeIsReady } from "#/hooks/use-runtime-is-ready";
+import { getGitPath } from "#/utils/get-git-path";
 
 /**
  * Probes whether the conversation's working-directory git repository has
  * at least one commit reachable from HEAD.
  *
- * Local-only by design: we deliberately avoid driving
- * `/api/bash/execute_bash_command` from the frontend on cloud backends.
- * On cloud, `hasCommits` stays `null` and the Files tab keeps its
- * optimistic diff-view default — fine in practice since cloud
+ * Direct-runtime only by design: we deliberately avoid driving
+ * `/api/bash/execute_bash_command` from the frontend on managed Cloud
+ * backends. On Cloud, `hasCommits` stays `null` and the Files tab keeps its
+ * optimistic diff-view default — fine in practice since Cloud
  * conversations almost always have an attached repo with commits.
  *
  * Used by the Files tab to decide whether the diff view is a sensible
@@ -31,19 +32,31 @@ export function useHasGitCommits(options?: { enabled?: boolean }): {
   const { data: conversation } = useActiveConversation();
   const runtimeIsReady = useRuntimeIsReady();
   const { backend } = useActiveBackend();
-  const isLocalBackend = backend.kind === "local";
+  const usesDirectRuntime =
+    backend.kind === "local" || backend.kind === "sandbox";
 
   const conversationId = conversation?.id;
   const conversationUrl = conversation?.conversation_url;
   const sessionApiKey = conversation?.session_api_key;
-  const workingDir = conversation?.workspace?.working_dir?.trim();
+  const configuredWorkingDir = conversation?.workspace?.working_dir?.trim();
+  const sandboxWorkingDir = getGitPath(
+    conversation?.selected_repository,
+    configuredWorkingDir,
+  );
+  const workingDir =
+    backend.kind === "sandbox"
+      ? sandboxWorkingDir.startsWith("/")
+        ? sandboxWorkingDir
+        : `/${sandboxWorkingDir}`
+      : configuredWorkingDir;
 
   const enabled =
     (options?.enabled ?? true) &&
-    isLocalBackend &&
+    usesDirectRuntime &&
     runtimeIsReady &&
     !!conversationId &&
-    !!workingDir;
+    !!workingDir &&
+    (backend.kind !== "sandbox" || (!!conversationUrl && !!sessionApiKey));
 
   const query = useQuery<boolean>({
     queryKey: [

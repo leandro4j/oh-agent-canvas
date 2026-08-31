@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import AgentServerGitService from "#/api/git-service/agent-server-git-service.api";
 import { useConversationId } from "#/hooks/use-conversation-id";
 import { useActiveConversation } from "#/hooks/query/use-active-conversation";
+import { useActiveBackend } from "#/contexts/active-backend-context";
 import { getGitPath } from "#/utils/get-git-path";
 import { GitChangeStatus } from "#/api/open-hands.types";
 
@@ -20,9 +21,19 @@ type UseUnifiedGitDiffConfig = {
 export const useUnifiedGitDiff = (config: UseUnifiedGitDiffConfig) => {
   const { conversationId } = useConversationId();
   const { data: conversation } = useActiveConversation();
+  const { backend } = useActiveBackend();
 
   const conversationUrl = conversation?.conversation_url;
   const sessionApiKey = conversation?.session_api_key;
+  const requiresRuntime =
+    backend.kind === "cloud" ||
+    backend.kind === "sandbox" ||
+    conversation?.sandbox_status != null;
+  const hasRuntime =
+    !requiresRuntime ||
+    (conversation?.sandbox_status === "RUNNING" &&
+      !!conversationUrl &&
+      !!sessionApiKey);
   const selectedRepository = conversation?.selected_repository;
   const workingDir = conversation?.workspace?.working_dir?.trim();
 
@@ -72,7 +83,7 @@ export const useUnifiedGitDiff = (config: UseUnifiedGitDiffConfig) => {
         config.commit,
       );
     },
-    enabled: config.enabled && (!isDeleted || !!config.commit),
+    enabled: config.enabled && hasRuntime && (!isDeleted || !!config.commit),
     staleTime: config.commit ? Infinity : 1000 * 60 * 5, // 5 minutes
     gcTime: 1000 * 60 * 15, // 15 minutes
   });

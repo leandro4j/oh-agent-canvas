@@ -404,10 +404,15 @@ export function ConversationWebSocketProvider({
     // Currently, there is only one sub-conversation and it uses the planning agent.
     const planningAgentConversation = subConversations[0];
 
-    if (
-      !planningAgentConversation?.id ||
-      !planningAgentConversation.conversation_url
-    ) {
+    const usesManagedRuntime =
+      planningAgentConversation?.sandbox_status != null;
+    const hasRuntime = usesManagedRuntime
+      ? planningAgentConversation?.sandbox_status === "RUNNING" &&
+        !!planningAgentConversation.conversation_url &&
+        !!planningAgentConversation.session_api_key
+      : !!planningAgentConversation?.conversation_url;
+
+    if (!planningAgentConversation?.id || !hasRuntime) {
       return null;
     }
 
@@ -1100,7 +1105,12 @@ export function ConversationWebSocketProvider({
         }
 
         try {
-          await new ConversationClient(getAgentServerClientOptions()).sendEvent(
+          await new ConversationClient(
+            getAgentServerClientOptions({
+              conversationUrl,
+              sessionApiKey,
+            }),
+          ).sendEvent(
             conversationId,
             {
               role: "user",
@@ -1133,7 +1143,14 @@ export function ConversationWebSocketProvider({
         throw error;
       }
     },
-    [mainSocket, planningAgentSocket, setErrorMessage, conversationId],
+    [
+      mainSocket,
+      planningAgentSocket,
+      setErrorMessage,
+      conversationId,
+      conversationUrl,
+      sessionApiKey,
+    ],
   );
 
   // Track main socket state changes

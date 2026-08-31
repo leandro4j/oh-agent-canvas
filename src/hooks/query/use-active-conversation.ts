@@ -41,6 +41,8 @@ export const useActiveConversation = () => {
     conversationId,
     userConversation.isFetched,
     userConversation?.data?.execution_status,
+    userConversation?.data?.conversation_url,
+    userConversation?.data?.session_api_key,
   ]);
   return userConversation;
 };

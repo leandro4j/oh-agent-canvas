@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import ConfigService from "#/api/config-service/config-service.api";
 import type { LLMProvider } from "#/api/config-service/config-service.types";
+import { useActiveBackend } from "#/contexts/active-backend-context";
 import {
   VERIFIED_MODELS_GC_TIME,
   VERIFIED_MODELS_QUERY_KEY,
@@ -54,12 +55,20 @@ async function fetchAllProviders(
   return [...page.items, ...rest];
 }
 
-export const useSearchProviders = () =>
-  useQuery({
-    queryKey: ["config", "providers"],
+export const useSearchProviders = () => {
+  const { backend, orgId } = useActiveBackend();
+  const backendQueryKey = [
+    backend.id,
+    backend.kind,
+    backend.connectionRevision ?? 0,
+    orgId,
+  ];
+
+  return useQuery({
+    queryKey: ["config", "providers", ...backendQueryKey],
     queryFn: async ({ client }): Promise<LLMProvider[]> => {
       const verifiedByProvider = await client.fetchQuery({
-        queryKey: VERIFIED_MODELS_QUERY_KEY,
+        queryKey: [...VERIFIED_MODELS_QUERY_KEY, ...backendQueryKey],
         queryFn: fetchVerifiedModelsByProvider,
         staleTime: VERIFIED_MODELS_STALE_TIME,
       });
@@ -71,3 +80,4 @@ export const useSearchProviders = () =>
     staleTime: VERIFIED_MODELS_STALE_TIME,
     gcTime: VERIFIED_MODELS_GC_TIME,
   });
+};

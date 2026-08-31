@@ -19,7 +19,7 @@ export function useRenameLlmProfile() {
     mutationFn: ({ name, newName }: RenameLlmProfileVariables) =>
       ProfilesService.renameProfile(name, newName),
     onSuccess: async (_response, { name, newName }) => {
-      if (getActiveBackend().backend.kind === "local") {
+      if (["local", "sandbox"].includes(getActiveBackend().backend.kind)) {
         const settings = await SettingsService.getSettings();
         if (settings?.title_llm_profile === name) {
           await SettingsService.saveSettings({
