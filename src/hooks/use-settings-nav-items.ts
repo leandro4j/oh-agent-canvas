@@ -25,11 +25,11 @@ export function useSettingsNavItems(): SettingsNavRenderedItem[] {
         ? {
             ...item,
             text:
-              backend.kind === "local"
+              backend.kind === "local" || backend.kind === "sandbox"
                 ? I18nKey.SETTINGS$LLM_PROFILES
                 : item.text,
             subtitle:
-              backend.kind === "local"
+              backend.kind === "local" || backend.kind === "sandbox"
                 ? I18nKey.SETTINGS$PAGE_LLM_PROFILES_SUBLINE
                 : item.subtitle,
           }

@@ -1,6 +1,9 @@
 import { buildHttpBaseUrl } from "#/utils/websocket-url";
 import { getAgentServerWorkingDir } from "./agent-server-config";
-import { getEffectiveLocalBackend } from "./backend-registry/active-store";
+import {
+  getActiveBackend,
+  getEffectiveDirectRuntimeBackend,
+} from "./backend-registry/active-store";
 import type { Backend } from "./backend-registry/types";
 
 export interface AgentServerClientOverrides {
@@ -52,13 +55,28 @@ function resolveHost(
 export function getAgentServerClientOptions(
   overrides: AgentServerClientOverrides = {},
 ): AgentServerClientOptions {
-  const backend = getEffectiveLocalBackend();
+  const activeBackend = getActiveBackend().backend;
+  const backend = getEffectiveDirectRuntimeBackend();
+  const hasExplicitRuntime = !!overrides.host || !!overrides.conversationUrl;
+
+  // A Sandbox backend's host is the control plane, not an Agent Server. Every
+  // direct runtime call must carry the URL/key pair returned for its
+  // conversation; falling back to the control-plane host would silently send
+  // `/api/...` requests to the wrong service.
+  if (activeBackend.kind === "sandbox" && !hasExplicitRuntime) {
+    throw new NoBackendAvailableError();
+  }
+
   if (!backend && !overrides.host && !overrides.conversationUrl) {
     throw new NoBackendAvailableError();
   }
 
   const apiKey =
-    overrides.sessionApiKey ?? overrides.apiKey ?? backend?.apiKey ?? undefined;
+    overrides.sessionApiKey ??
+    overrides.apiKey ??
+    (activeBackend.kind === "sandbox" && hasExplicitRuntime
+      ? undefined
+      : backend?.apiKey);
 
   return {
     host: resolveHost(overrides, backend),

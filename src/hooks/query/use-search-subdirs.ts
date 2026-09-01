@@ -55,7 +55,7 @@ export const useSearchSubdirs = (path: string | null) => {
   return useQuery({
     queryKey: ["file", "search_subdirs", path, active.backend.id, active.orgId],
     queryFn: () => searchAllSubdirectories(path as string),
-    enabled: !!path,
+    enabled: !!path && active.backend.kind === "local",
     retry: false,
     meta: { disableToast: true },
   });
@@ -68,6 +68,7 @@ export const useHomeDirectory = () => {
     queryFn: async (): Promise<HomeDirectoryResponse> =>
       getFileClient().getHome(),
     retry: false,
+    enabled: active.backend.kind === "local",
     meta: { disableToast: true },
     staleTime: Infinity,
   });

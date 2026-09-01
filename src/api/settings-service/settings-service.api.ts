@@ -5,7 +5,12 @@ import type {
   MCPServerPatch,
 } from "@openhands/typescript-client";
 import { DEFAULT_SETTINGS } from "#/services/settings";
-import { Settings, SettingsSchema, SettingsValue } from "#/types/settings";
+import {
+  Provider,
+  Settings,
+  SettingsSchema,
+  SettingsValue,
+} from "#/types/settings";
 import { stringRecord } from "#/utils/mcp-config";
 import { getActiveBackend } from "../backend-registry/active-store";
 import {
@@ -15,6 +20,7 @@ import {
   saveCloudSettings,
 } from "../cloud/settings-service.api";
 import { getAgentServerClientOptions } from "../agent-server-client-options";
+import { withSandboxControlPlaneClient } from "../sandbox/sandbox-client.api";
 
 /**
  * Fields the agent-server stores under `misc_settings.app_preferences` (see
@@ -57,6 +63,9 @@ export interface SettingsApiResponse {
   agent_settings: Record<string, SettingsValue>;
   conversation_settings: Record<string, SettingsValue>;
   llm_api_key_is_set: boolean;
+  /** Sandbox Server's redacted token-presence metadata. */
+  search_api_key_set?: boolean;
+  provider_tokens_set?: Partial<Record<string, string | null>>;
   /**
    * Frontend-owned settings the agent does not interpret (currently just
    * `app_preferences`). Added in agent-server 1.27; earlier servers omit
@@ -168,22 +177,124 @@ let settingsCache: {
   encrypted: SettingsApiResponse | null;
   /** Timestamp when the cache was last populated */
   timestamp: number;
+  /** Backend connection that owns both cached responses */
+  backendKey: string | null;
 } = {
   redacted: null,
   encrypted: null,
   timestamp: 0,
+  backendKey: null,
 };
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-const isCacheValid = () => Date.now() - settingsCache.timestamp < CACHE_TTL_MS;
+const getSettingsCacheKey = (): string => {
+  const { backend } = getActiveBackend();
+  return `${backend.id}:${backend.kind}:${backend.connectionRevision ?? 0}`;
+};
+
+const prepareCacheForActiveBackend = (): string => {
+  const backendKey = getSettingsCacheKey();
+  if (settingsCache.backendKey !== backendKey) {
+    settingsCache = {
+      redacted: null,
+      encrypted: null,
+      timestamp: 0,
+      backendKey,
+    };
+  }
+  return backendKey;
+};
+
+const isCacheValid = (backendKey: string) =>
+  settingsCache.backendKey === backendKey &&
+  Date.now() - settingsCache.timestamp < CACHE_TTL_MS;
 
 const clearCache = () => {
-  settingsCache = { redacted: null, encrypted: null, timestamp: 0 };
+  settingsCache = {
+    redacted: null,
+    encrypted: null,
+    timestamp: 0,
+    backendKey: null,
+  };
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
+
+const normalizeSandboxSettingsResponse = (
+  value: unknown,
+): SettingsApiResponse => {
+  const response = isRecord(value) ? value : {};
+  const agentSettings = isRecord(response.agent_settings)
+    ? (response.agent_settings as Record<string, SettingsValue>)
+    : {};
+  const conversationSettings = isRecord(response.conversation_settings)
+    ? (response.conversation_settings as Record<string, SettingsValue>)
+    : {};
+  const existingMisc = isRecord(response.misc_settings)
+    ? response.misc_settings
+    : {};
+  const appPreferences = isRecord(existingMisc.app_preferences)
+    ? { ...existingMisc.app_preferences }
+    : {};
+
+  // Sandbox Server returns the app-owned settings as top-level fields, while
+  // the local Agent Server adapter exposes them under misc_settings. Normalize
+  // the two wire shapes before the rest of SettingsService processes them.
+  for (const key of APP_PREFERENCE_FIELDS) {
+    if (response[key] !== undefined) {
+      (appPreferences as Record<string, unknown>)[key] = response[key];
+    }
+  }
+
+  const llmApiKeySet =
+    typeof response.llm_api_key_is_set === "boolean"
+      ? response.llm_api_key_is_set
+      : response.llm_api_key_set === true;
+  const searchApiKeySet =
+    typeof response.search_api_key_set === "boolean"
+      ? response.search_api_key_set
+      : undefined;
+  const providerTokensSet: Partial<Record<string, string | null>> | undefined =
+    isRecord(response.provider_tokens_set)
+      ? (Object.fromEntries(
+          Object.entries(response.provider_tokens_set).filter(
+            ([, host]) => typeof host === "string" || host === null,
+          ),
+        ) as Partial<Record<string, string | null>>)
+      : undefined;
+
+  return {
+    agent_settings: agentSettings,
+    conversation_settings: conversationSettings,
+    llm_api_key_is_set: llmApiKeySet,
+    ...(searchApiKeySet !== undefined
+      ? { search_api_key_set: searchApiKeySet }
+      : {}),
+    ...(providerTokensSet !== undefined
+      ? { provider_tokens_set: providerTokensSet }
+      : {}),
+    ...(Object.keys(appPreferences).length > 0
+      ? { misc_settings: { app_preferences: appPreferences } }
+      : {}),
+  };
+};
+
+const mergeMcpPatch = (base: unknown, patch: unknown): unknown => {
+  if (!isRecord(patch)) return patch;
+  const merged = isRecord(base) ? { ...base } : {};
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === null) {
+      delete merged[key];
+    } else if (isRecord(value)) {
+      merged[key] = mergeMcpPatch(merged[key], value);
+    } else {
+      merged[key] = value;
+    }
+  }
+  return merged;
+};
 
 const basicAuthHeader = (username: string, password: string): string => {
   const token = btoa(`${username}:${password}`);
@@ -330,6 +441,16 @@ const transformApiResponse = (
     agent_settings: agentSettings,
     conversation_settings: conversationSettings,
     llm_api_key_set: response.llm_api_key_is_set,
+    ...(typeof response.search_api_key_set === "boolean"
+      ? { search_api_key_set: response.search_api_key_set }
+      : {}),
+    ...(response.provider_tokens_set
+      ? {
+          provider_tokens_set: response.provider_tokens_set as Partial<
+            Record<Provider, string | null>
+          >,
+        }
+      : {}),
   };
 
   // App-level user preferences come back nested under
@@ -415,7 +536,10 @@ const syncDerivedSettings = (settings: Partial<Settings>): Settings => {
     merged.max_iterations = conversationSettings.max_iterations;
   }
 
-  merged.search_api_key_set = !!merged.search_api_key;
+  merged.search_api_key_set =
+    typeof settings.search_api_key_set === "boolean"
+      ? settings.search_api_key_set
+      : !!merged.search_api_key;
 
   return merged;
 };
@@ -432,6 +556,17 @@ class SettingsService {
   static async fetchSettingsFromApi(
     exposeSecrets?: ExposeSecretsMode,
   ): Promise<SettingsApiResponse> {
+    if (getActiveBackend().backend.kind === "sandbox") {
+      // Sandbox Server owns the settings store and exposes it below /api/v1.
+      // Its response is the app-server Settings model, not the legacy
+      // agent-server `/api/settings` response, so normalize it here.
+      return withRetry(() =>
+        withSandboxControlPlaneClient((client) =>
+          client.get<unknown>("/settings"),
+        ),
+      ).then(normalizeSandboxSettingsResponse);
+    }
+
     return withRetry(() =>
       new SettingsClient(getAgentServerClientOptions()).getSettings({
         exposeSecrets,
@@ -460,8 +595,10 @@ class SettingsService {
       }
     }
 
+    const backendKey = prepareCacheForActiveBackend();
+
     // Check cache first
-    if (isCacheValid() && settingsCache.redacted) {
+    if (isCacheValid(backendKey) && settingsCache.redacted) {
       return syncDerivedSettings(transformApiResponse(settingsCache.redacted));
     }
 
@@ -469,6 +606,7 @@ class SettingsService {
       const response = await this.fetchSettingsFromApi();
       settingsCache.redacted = response;
       settingsCache.timestamp = Date.now();
+      settingsCache.backendKey = backendKey;
       return syncDerivedSettings(transformApiResponse(response));
     } catch (error) {
       // If API fails, return defaults
@@ -490,32 +628,43 @@ class SettingsService {
     conversationSettings: Record<string, SettingsValue>;
     secretsEncrypted: boolean;
   }> {
+    const isSandbox = getActiveBackend().backend.kind === "sandbox";
+    const backendKey = prepareCacheForActiveBackend();
+
     // Check cache first
-    if (isCacheValid() && settingsCache.encrypted) {
+    if (isCacheValid(backendKey) && settingsCache.encrypted) {
       return {
         agentSettings: settingsCache.encrypted.agent_settings,
         conversationSettings: settingsCache.encrypted.conversation_settings,
-        secretsEncrypted: true,
+        secretsEncrypted: !isSandbox,
       };
     }
 
     // Fetch encrypted settings - this MUST succeed for conversations to work.
     // Do not fall back to redacted settings as that would cause auth failures.
-    const response = await this.fetchSettingsFromApi("encrypted");
+    const response = await this.fetchSettingsFromApi(
+      isSandbox ? undefined : "encrypted",
+    );
     settingsCache.encrypted = response;
+    settingsCache.backendKey = backendKey;
     if (!settingsCache.timestamp) {
       settingsCache.timestamp = Date.now();
     }
     return {
       agentSettings: response.agent_settings,
       conversationSettings: response.conversation_settings,
-      secretsEncrypted: true,
+      secretsEncrypted: !isSandbox,
     };
   }
 
   static async getSettingsSchema(): Promise<SettingsSchema> {
     if (getActiveBackend().backend.kind === "cloud") {
       return (await fetchCloudSettingsSchema()) as SettingsSchema;
+    }
+    if (getActiveBackend().backend.kind === "sandbox") {
+      return withSandboxControlPlaneClient((client) =>
+        client.get<SettingsSchema>("/settings/agent-schema"),
+      );
     }
     return (await new SettingsClient(
       getAgentServerClientOptions(),
@@ -525,6 +674,11 @@ class SettingsService {
   static async getConversationSettingsSchema(): Promise<SettingsSchema> {
     if (getActiveBackend().backend.kind === "cloud") {
       return (await fetchCloudConversationSettingsSchema()) as SettingsSchema;
+    }
+    if (getActiveBackend().backend.kind === "sandbox") {
+      return withSandboxControlPlaneClient((client) =>
+        client.get<SettingsSchema>("/settings/conversation-schema"),
+      );
     }
     return (await new SettingsClient(
       getAgentServerClientOptions(),
@@ -544,6 +698,29 @@ class SettingsService {
           agent_settings_diff: { mcp_config: mcpConfig as SettingsValue },
         }),
       );
+    } else if (getActiveBackend().backend.kind === "sandbox") {
+      const current = await SettingsService.fetchSettingsFromApi();
+      const currentMcp = current.agent_settings.mcp_config;
+      const nextMcp: Record<string, unknown> = isRecord(currentMcp)
+        ? { ...currentMcp }
+        : {};
+      for (const [name, serverPatch] of Object.entries(patch)) {
+        if (serverPatch === null) {
+          delete nextMcp[name];
+        } else {
+          nextMcp[name] = mergeMcpPatch(
+            nextMcp[name],
+            serverPatch,
+          ) as MCPServer;
+        }
+      }
+      await withRetry(() =>
+        withSandboxControlPlaneClient((client) =>
+          client.post("/settings", {
+            agent_settings_diff: { mcp_config: nextMcp as SettingsValue },
+          }),
+        ),
+      );
     } else {
       await withRetry(() =>
         new SettingsClient(getAgentServerClientOptions()).updateSettings({
@@ -560,6 +737,9 @@ class SettingsService {
     patch: MCPServerPatch,
   ): Promise<boolean> {
     if (getActiveBackend().backend.kind === "cloud") {
+      return SettingsService.patchMcpConfig({ [settingsKey]: patch });
+    }
+    if (getActiveBackend().backend.kind === "sandbox") {
       return SettingsService.patchMcpConfig({ [settingsKey]: patch });
     }
     await withRetry(() =>
@@ -579,6 +759,9 @@ class SettingsService {
     if (getActiveBackend().backend.kind === "cloud") {
       return SettingsService.patchMcpConfig({ [settingsKey]: server });
     }
+    if (getActiveBackend().backend.kind === "sandbox") {
+      return SettingsService.patchMcpConfig({ [settingsKey]: server });
+    }
     await withRetry(() =>
       new SettingsClient(getAgentServerClientOptions()).createMcpServer(
         settingsKey,
@@ -591,6 +774,9 @@ class SettingsService {
 
   static async deleteMcpServer(settingsKey: string): Promise<boolean> {
     if (getActiveBackend().backend.kind === "cloud") {
+      return SettingsService.patchMcpConfig({ [settingsKey]: null });
+    }
+    if (getActiveBackend().backend.kind === "sandbox") {
       return SettingsService.patchMcpConfig({ [settingsKey]: null });
     }
     await withRetry(() =>
@@ -645,7 +831,8 @@ class SettingsService {
       payload.misc_settings_diff = { app_preferences: appPreferences };
     }
 
-    const isCloud = getActiveBackend().backend.kind === "cloud";
+    const activeBackend = getActiveBackend().backend;
+    const isCloud = activeBackend.kind === "cloud";
     if (isCloud) {
       const hasCloudWork =
         !!payload.agent_settings_diff ||
@@ -678,6 +865,23 @@ class SettingsService {
         cloudPayload.app_preferences = appPreferences;
       }
       await withRetry(() => saveCloudSettings(cloudPayload));
+    } else if (activeBackend.kind === "sandbox") {
+      const sandboxPayload: Record<string, unknown> = { ...payload };
+      delete sandboxPayload.misc_settings_diff;
+      if (hasAppPreferences) {
+        Object.assign(sandboxPayload, appPreferences);
+      }
+
+      const hasSandboxDiffs = Object.keys(sandboxPayload).length > 0;
+      if (!hasSandboxDiffs) {
+        return true;
+      }
+
+      await withRetry(() =>
+        withSandboxControlPlaneClient((client) =>
+          client.post("/settings", sandboxPayload),
+        ),
+      );
     } else {
       // The local agent-server PATCH /api/settings requires at least one of
       // the three diff fields. Skip the request entirely if nothing changed.

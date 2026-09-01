@@ -21,22 +21,32 @@ export function WebSocketProviderWrapper({
     (subConversation) => subConversation !== null,
   );
 
-  // Don't pass a conversation URL to the WebSocket provider while the cloud
-  // sandbox is PAUSED. The URL still points to the old sandbox host, which
-  // rejects connections until the sandbox has fully resumed. Treating the URL
-  // as absent here keeps wsUrl === null in ConversationWebSocketProvider, so
-  // no connection is attempted until useActiveConversation detects the
-  // transition out of PAUSED (via fast 3-second polling).
-  const conversationUrl =
-    conversation?.sandbox_status === "PAUSED"
-      ? null
-      : conversation?.conversation_url;
+  // Sandbox Server may retain the last runtime URL while a sandbox is paused
+  // (or report it before the runtime is ready). A WebSocket needs the current
+  // URL and its matching runtime key as one atomic pair; wait for the next
+  // control-plane poll before attempting to reconnect.
+  const usesManagedRuntime = conversation?.sandbox_status != null;
+  const hasRuntime = usesManagedRuntime
+    ? conversation?.sandbox_status === "RUNNING" &&
+      !!conversation?.conversation_url &&
+      !!conversation?.session_api_key
+    : !!conversation?.conversation_url;
+  const conversationUrl = !conversation
+    ? undefined
+    : hasRuntime
+      ? conversation.conversation_url
+      : null;
+  const sessionApiKey = !conversation
+    ? undefined
+    : hasRuntime
+      ? conversation.session_api_key
+      : null;
 
   return (
     <ConversationWebSocketProvider
       conversationId={conversationId}
       conversationUrl={conversationUrl}
-      sessionApiKey={conversation?.session_api_key}
+      sessionApiKey={sessionApiKey}
       subConversationIds={conversation?.sub_conversation_ids}
       subConversations={filteredSubConversations}
     >

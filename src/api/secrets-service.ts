@@ -9,10 +9,37 @@ import {
 import { getAgentServerClientOptions } from "./agent-server-client-options";
 import { CustomSecretWithoutValue } from "./secrets-service.types";
 import { withRetry } from "./with-retry";
+import { withSandboxControlPlaneClient } from "./sandbox/sandbox-client.api";
+
+function isSandboxBackend(): boolean {
+  return getActiveBackend().backend.kind === "sandbox";
+}
 
 async function fetchSecrets(): Promise<CustomSecretWithoutValue[]> {
   if (getActiveBackend().backend.kind === "cloud") {
     return withRetry(() => fetchCloudSecrets());
+  }
+  if (isSandboxBackend()) {
+    const secrets: CustomSecretWithoutValue[] = [];
+    let pageId: string | undefined;
+    do {
+      const page = await withRetry(() =>
+        withSandboxControlPlaneClient((client) =>
+          client.get<{
+            items?: CustomSecretWithoutValue[];
+            next_page_id?: string | null;
+          }>("/secrets/search", {
+            params: {
+              limit: 100,
+              ...(pageId ? { page_id: pageId } : {}),
+            },
+          }),
+        ),
+      );
+      secrets.push(...(page?.items ?? []));
+      pageId = page?.next_page_id ?? undefined;
+    } while (pageId);
+    return secrets;
   }
   const response = await withRetry(() =>
     new SettingsClient(getAgentServerClientOptions()).listSecrets(),
@@ -66,6 +93,14 @@ export class SecretsService {
       await saveCloudSecret({ name, value, description });
       return;
     }
+    if (isSandboxBackend()) {
+      await withRetry(() =>
+        withSandboxControlPlaneClient((client) =>
+          client.post("/secrets", { name, value, description }),
+        ),
+      );
+      return;
+    }
     await withRetry(() =>
       new SettingsClient(getAgentServerClientOptions()).upsertSecret({
         name,
@@ -103,6 +138,32 @@ export class SecretsService {
       return;
     }
 
+    if (isSandboxBackend()) {
+      if (value !== undefined) {
+        await withRetry(() =>
+          withSandboxControlPlaneClient((client) =>
+            client.post("/secrets", { name, value, description }),
+          ),
+        );
+        if (name !== secretToEdit) {
+          await this.deleteSecret(secretToEdit);
+        }
+        return;
+      }
+
+      // The V1 endpoint can rename/update metadata while retaining the value
+      // server-side, so the browser never needs to read a secret plaintext.
+      await withRetry(() =>
+        withSandboxControlPlaneClient((client) =>
+          client.put(`/secrets/${encodeURIComponent(secretToEdit)}`, {
+            name,
+            description,
+          }),
+        ),
+      );
+      return;
+    }
+
     const client = new SettingsClient(getAgentServerClientOptions());
     const nextValue =
       value ?? (await withRetry(() => client.getSecret(secretToEdit)));
@@ -131,6 +192,14 @@ export class SecretsService {
     try {
       if (getActiveBackend().backend.kind === "cloud") {
         await withRetry(() => deleteCloudSecret(name));
+        return;
+      }
+      if (isSandboxBackend()) {
+        await withRetry(() =>
+          withSandboxControlPlaneClient((client) =>
+            client.delete(`/secrets/${encodeURIComponent(name)}`),
+          ),
+        );
         return;
       }
       await withRetry(() =>

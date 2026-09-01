@@ -3,7 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 
 import AgentServerRuntimeService from "#/api/runtime-service/agent-server-runtime-service";
 import { listCloudConversationFiles } from "#/api/cloud/conversation-service.api";
+import { DEFAULT_WORKING_DIR } from "#/api/agent-server-config";
 import {
+  getActiveBackend,
   getSnapshot,
   subscribeActiveBackend,
 } from "#/api/backend-registry/active-store";
@@ -51,6 +53,18 @@ function normalizePath(path: string): string {
   return path.startsWith("./") ? path.slice(2) : path;
 }
 
+function getSandboxWorkingDir(
+  selectedRepository: string | null | undefined,
+  workingDir: string | undefined,
+): string {
+  const path =
+    workingDir?.trim() ||
+    (selectedRepository
+      ? getGitPath(selectedRepository, undefined)
+      : DEFAULT_WORKING_DIR);
+  return path.startsWith("/") ? path : `/${path}`;
+}
+
 /**
  * Local-backend listing: enumerate every regular file beneath the active
  * conversation's working directory via `find` over the agent-server's
@@ -65,15 +79,23 @@ function normalizePath(path: string): string {
 function useLocalWorkspaceFiles(enabled: boolean): WorkspaceFilesResult {
   const { data: conversation } = useActiveConversation();
   const runtimeIsReady = useRuntimeIsReady();
+  const activeBackend = getActiveBackend().backend;
 
   const conversationId = conversation?.id;
   const conversationUrl = conversation?.conversation_url;
   const sessionApiKey = conversation?.session_api_key;
-  const workingDir = conversation?.workspace?.working_dir?.trim();
+  const selectedRepository = conversation?.selected_repository;
+  const configuredWorkingDir = conversation?.workspace?.working_dir?.trim();
+  const workingDir =
+    activeBackend.kind === "sandbox"
+      ? getSandboxWorkingDir(selectedRepository, configuredWorkingDir)
+      : configuredWorkingDir;
 
   const query = useQuery<string[]>({
     queryKey: [
       "workspace-files",
+      activeBackend.id,
+      activeBackend.kind,
       conversationId,
       conversationUrl,
       sessionApiKey,
@@ -134,6 +156,7 @@ function useCloudWorkspaceFiles(enabled: boolean): WorkspaceFilesResult {
   const { conversationId } = useOptionalConversationId();
   const { data: conversation } = useActiveConversation();
   const runtimeIsReady = useRuntimeIsReady();
+  const activeBackend = getActiveBackend().backend;
 
   const selectedRepository = conversation?.selected_repository;
   const workingDir = conversation?.workspace?.working_dir?.trim();
@@ -145,7 +168,13 @@ function useCloudWorkspaceFiles(enabled: boolean): WorkspaceFilesResult {
   const absolutePath = gitPath.startsWith("/") ? gitPath : `/${gitPath}`;
 
   const query = useQuery<string[]>({
-    queryKey: ["workspace-files-cloud", conversationId, absolutePath],
+    queryKey: [
+      "workspace-files-cloud",
+      activeBackend.id,
+      activeBackend.kind,
+      conversationId,
+      absolutePath,
+    ],
     queryFn: async () => {
       const files = await listCloudConversationFiles(
         conversationId!,
@@ -188,7 +217,8 @@ export function useWorkspaceFiles(): WorkspaceFilesResult {
     getSnapshot,
     getSnapshot,
   );
-  const isCloud = snapshot.active.backend.kind === "cloud";
+  const activeBackend = snapshot.active.backend;
+  const isCloud = activeBackend.kind === "cloud";
 
   const local = useLocalWorkspaceFiles(!isCloud);
   const cloud = useCloudWorkspaceFiles(isCloud);

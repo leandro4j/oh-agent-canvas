@@ -41,6 +41,14 @@ const localBackend: Backend = {
   kind: "local",
 };
 
+const sandboxBackend: Backend = {
+  id: "test-sandbox",
+  name: "Test Sandbox",
+  host: "https://sandbox.example.test",
+  apiKey: "sandbox-key",
+  kind: "sandbox",
+};
+
 function renderLlmConfiguredHook() {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -172,5 +180,55 @@ describe("useLlmConfigured", () => {
     expect(result.current.isConfigured).toBe(false);
     // Detail is fetched because the profile is local + active + key-less.
     expect(mockGetProfile).toHaveBeenCalledWith("gpt-5.5");
+  });
+
+  it("uses Sandbox settings when no LLM profiles exist", async () => {
+    setRegisteredBackends([sandboxBackend]);
+    setActiveSelection({ backendId: sandboxBackend.id });
+    mockGetSettings.mockResolvedValue({
+      ...DEFAULT_SETTINGS,
+      llm_api_key_set: true,
+    });
+    mockListProfiles.mockResolvedValue({
+      active_profile: null,
+      profiles: [],
+    });
+
+    const { result } = renderLlmConfiguredHook();
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.isConfigured).toBe(true);
+  });
+
+  it("does not use a stale Sandbox settings key when profiles exist", async () => {
+    setRegisteredBackends([sandboxBackend]);
+    setActiveSelection({ backendId: sandboxBackend.id });
+    mockGetSettings.mockResolvedValue({
+      ...DEFAULT_SETTINGS,
+      llm_api_key_set: true,
+    });
+    mockListProfiles.mockResolvedValue({
+      active_profile: "gpt-5.5",
+      profiles: [
+        {
+          name: "gpt-5.5",
+          model: "gpt-5.5",
+          base_url: "https://api.openai.com/v1",
+          api_key_set: false,
+        },
+      ],
+    });
+    mockGetProfile.mockResolvedValue({
+      name: "gpt-5.5",
+      api_key_set: false,
+      config: { model: "openai/gpt-5.5" },
+    });
+
+    const { result } = renderLlmConfiguredHook();
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.isConfigured).toBe(false);
   });
 });

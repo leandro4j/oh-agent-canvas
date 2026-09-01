@@ -40,6 +40,7 @@ import {
   renameCloudProfile,
   saveCloudProfile,
 } from "../cloud/profiles-service.api";
+import { withSandboxControlPlaneClient } from "../sandbox/sandbox-client.api";
 
 /**
  * Profile summaries carry an optional `provider_connection_id` (the shared
@@ -74,6 +75,10 @@ function isCloudBackend(): boolean {
   return getActiveBackend().backend.kind === "cloud";
 }
 
+function isSandboxBackend(): boolean {
+  return getActiveBackend().backend.kind === "sandbox";
+}
+
 function isAbortLike(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const name = "name" in error ? error.name : undefined;
@@ -90,6 +95,11 @@ function isAbortLike(error: unknown): boolean {
 class ProfilesService {
   static async listProfiles(): Promise<ProfileListResponse> {
     if (isCloudBackend()) return fetchCloudProfiles();
+    if (isSandboxBackend()) {
+      return withSandboxControlPlaneClient((client) =>
+        client.get<ProfileListResponse>("/settings/profiles"),
+      );
+    }
     return new ProfilesClient(getAgentServerClientOptions()).listProfiles();
   }
 
@@ -100,6 +110,13 @@ class ProfilesService {
     // Cloud never exposes profile secrets (api_key is always nulled with an
     // api_key_set flag), so `exposeSecrets` is local-only.
     if (isCloudBackend()) return fetchCloudProfile(name);
+    if (isSandboxBackend()) {
+      return withSandboxControlPlaneClient((client) =>
+        client.get<ProfileDetailResponse>(
+          `/settings/profiles/${encodeURIComponent(name)}`,
+        ),
+      );
+    }
     const options: GetProfileOptions = exposeSecrets ? { exposeSecrets } : {};
     return new ProfilesClient(getAgentServerClientOptions()).getProfile(
       name,
@@ -112,6 +129,14 @@ class ProfilesService {
     request: SaveProfileRequest,
   ): Promise<ProfileMutationResponse> {
     if (isCloudBackend()) return saveCloudProfile(name, request);
+    if (isSandboxBackend()) {
+      return withSandboxControlPlaneClient((client) =>
+        client.post<ProfileMutationResponse>(
+          `/settings/profiles/${encodeURIComponent(name)}`,
+          request,
+        ),
+      );
+    }
     return new ProfilesClient(getAgentServerClientOptions()).saveProfile(
       name,
       request,
@@ -120,6 +145,13 @@ class ProfilesService {
 
   static async deleteProfile(name: string): Promise<ProfileMutationResponse> {
     if (isCloudBackend()) return deleteCloudProfile(name);
+    if (isSandboxBackend()) {
+      return withSandboxControlPlaneClient((client) =>
+        client.delete<ProfileMutationResponse>(
+          `/settings/profiles/${encodeURIComponent(name)}`,
+        ),
+      );
+    }
     return new ProfilesClient(getAgentServerClientOptions()).deleteProfile(
       name,
     );
@@ -130,6 +162,14 @@ class ProfilesService {
     newName: string,
   ): Promise<ProfileMutationResponse> {
     if (isCloudBackend()) return renameCloudProfile(name, newName);
+    if (isSandboxBackend()) {
+      return withSandboxControlPlaneClient((client) =>
+        client.post<ProfileMutationResponse>(
+          `/settings/profiles/${encodeURIComponent(name)}/rename`,
+          { new_name: newName },
+        ),
+      );
+    }
     return new ProfilesClient(getAgentServerClientOptions()).renameProfile(
       name,
       newName,
@@ -138,6 +178,13 @@ class ProfilesService {
 
   static async activateProfile(name: string): Promise<ActivateProfileResponse> {
     if (isCloudBackend()) return activateCloudProfile(name);
+    if (isSandboxBackend()) {
+      return withSandboxControlPlaneClient((client) =>
+        client.post<ActivateProfileResponse>(
+          `/settings/profiles/${encodeURIComponent(name)}/activate`,
+        ),
+      );
+    }
     return new ProfilesClient(getAgentServerClientOptions()).activateProfile(
       name,
     );
@@ -159,7 +206,7 @@ class ProfilesService {
     name: string,
     request: SaveProfileRequest,
   ): Promise<ValidateProfileResponse | null> {
-    if (isCloudBackend()) return null;
+    if (isCloudBackend() || isSandboxBackend()) return null;
     const client = new ProfilesClient({
       ...getAgentServerClientOptions(),
       timeout: 30000,

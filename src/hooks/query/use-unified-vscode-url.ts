@@ -32,6 +32,7 @@ export const useUnifiedVSCodeUrl = () => {
   const sessionApiKey = conversation?.session_api_key ?? null;
   const sandboxId = conversation?.sandbox_id ?? null;
   const isCloud = active.backend.kind === "cloud";
+  const isSandbox = active.backend.kind === "sandbox";
 
   // The origin half of the availability question. The agent-server will
   // happily report an editor this page has no route to — see
@@ -59,7 +60,7 @@ export const useUnifiedVSCodeUrl = () => {
     queryKey: [
       "unified",
       "vscode_status",
-      "local",
+      isSandbox ? "sandbox" : "local",
       conversationId,
       conversationUrl,
       sessionApiKey,
@@ -70,7 +71,10 @@ export const useUnifiedVSCodeUrl = () => {
         sessionApiKey,
       ),
     enabled:
-      !isCloud && originServesEditor && runtimeIsReady && !!conversationId,
+      !isCloud &&
+      (isSandbox || originServesEditor) &&
+      runtimeIsReady &&
+      !!conversationId,
     refetchOnMount: true,
   });
 
@@ -88,7 +92,7 @@ export const useUnifiedVSCodeUrl = () => {
     queryKey: [
       "unified",
       "vscode_url",
-      "local",
+      isSandbox ? "sandbox" : "local",
       conversationId,
       conversationUrl,
       sessionApiKey,
@@ -100,13 +104,19 @@ export const useUnifiedVSCodeUrl = () => {
         conversationId,
         conversationUrl,
         sessionApiKey,
-      ).catch(() => ConversationService.getVSCodeUrl(conversationId));
+      ).catch((error) => {
+        // Sandbox Server is the source of truth for its exposed editor URL.
+        // Falling back to the runtime's internal localhost URL would produce
+        // a browser link that cannot reach the editor.
+        if (isSandbox) throw error;
+        return ConversationService.getVSCodeUrl(conversationId);
+      });
 
       return { url: transformVSCodeUrl(response.vscode_url) };
     },
     enabled:
       !isCloud &&
-      originServesEditor &&
+      (isSandbox || originServesEditor) &&
       runtimeIsReady &&
       !!conversationId &&
       editorIsAvailable,
@@ -186,10 +196,11 @@ export const useUnifiedVSCodeUrl = () => {
     // server faults stay visible as query errors with their normal retry and
     // toast, rather than silently removing the control.
     isUnavailable =
-      !originServesEditor ||
+      (!isSandbox && !originServesEditor) ||
       (statusQuery.isSuccess && !editorIsAvailable) ||
       (isSuccess && !localQuery.data?.url) ||
-      (isSuccess &&
+      (!isSandbox &&
+        isSuccess &&
         !isVSCodeUrlServedByOrigin(localQuery.data?.url, originBasePath));
   }
 

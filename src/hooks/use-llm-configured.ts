@@ -54,7 +54,8 @@ export function useLlmConfigured(): LlmConfiguredResult {
     isError: profilesError,
   } = useLlmProfiles();
   const { backend, orgId } = useActiveBackend();
-  const isLocal = backend.kind === "local";
+  const isProfileBackend =
+    backend.kind === "local" || backend.kind === "sandbox";
 
   // The active AgentProfile is the current agent — an ACP profile owns its LLM
   // via the subprocess and never needs an API key. Fall back to the global
@@ -76,7 +77,7 @@ export function useLlmConfigured(): LlmConfiguredResult {
   const referencedLlmProfileName =
     activeAgentProfile?.agent_kind === "openhands" &&
     !(
-      isLocal &&
+      isProfileBackend &&
       activeAgentProfile.name === WELL_KNOWN_DEFAULT_AGENT_PROFILE_NAME
     )
       ? activeAgentProfile.llm_profile_ref
@@ -101,7 +102,7 @@ export function useLlmConfigured(): LlmConfiguredResult {
     );
   const hasActiveProfileApiKey = activeProfile?.api_key_set === true;
   const shouldLoadActiveProfileDetail =
-    isLocal && !!activeProfile && !hasActiveProfileApiKey;
+    isProfileBackend && !!activeProfile && !hasActiveProfileApiKey;
   const {
     data: activeProfileDetail,
     isLoading: activeProfileDetailLoading,
@@ -129,7 +130,7 @@ export function useLlmConfigured(): LlmConfiguredResult {
     config?.feature_flags,
   );
 
-  // In local mode, profiles are the source of truth: a usable LLM must be
+  // On profile-backed runtimes, profiles are the source of truth: a usable LLM must be
   // backed by an active profile that still exists and is authenticated. API-key
   // profiles use the list endpoint's api_key_set flag; subscription profiles
   // intentionally have no key, so we inspect the active profile detail config.
@@ -138,7 +139,18 @@ export function useLlmConfigured(): LlmConfiguredResult {
   // backends don't use profiles and keep the settings-key signal.
   const hasUsableActiveProfile =
     hasActiveProfileApiKey || hasActiveProfileSubscription;
-  const hasUsableLlm = isLocal ? hasUsableActiveProfile : hasApiKey;
+  // Sandbox Server supports both its profile store and the direct agent
+  // settings payload. Older/hand-configured sandboxes can have a configured
+  // settings key before any profile exists, so preserve that launch path only
+  // for an explicitly empty profile store. Once profiles exist, their active
+  // profile remains the source of truth, matching local behavior.
+  const hasUsableSandboxSettingsFallback =
+    backend.kind === "sandbox" &&
+    profilesData?.profiles.length === 0 &&
+    hasApiKey;
+  const hasUsableLlm = isProfileBackend
+    ? hasUsableActiveProfile || hasUsableSandboxSettingsFallback
+    : hasApiKey;
 
   // Treat a fetch failure as indeterminate (same as loading) only when it
   // leaves us with no data to decide from — otherwise a transient network

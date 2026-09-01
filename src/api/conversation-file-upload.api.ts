@@ -2,6 +2,7 @@ import { RemoteWorkspace } from "@openhands/typescript-client/workspace/remote-w
 import { getAgentServerClientOptions } from "#/api/agent-server-client-options";
 import { getActiveBackend } from "#/api/backend-registry/active-store";
 import { batchGetCloudConversations } from "#/api/cloud/conversation-service.api";
+import { batchGetSandboxConversations } from "#/api/sandbox/sandbox-conversation-service.api";
 import type { AppConversation } from "#/api/conversation-service/agent-server-conversation-service.types";
 import type { FileUploadSuccessResponse } from "#/api/open-hands.types";
 import {
@@ -26,10 +27,14 @@ export async function resolveConversationRuntime(
   conversationId: string,
   currentConversation?: AppConversation | null,
 ): Promise<ConversationRuntimeContext> {
+  const backendKind = getActiveBackend().backend.kind;
+  const isManagedRuntime = backendKind === "cloud" || backendKind === "sandbox";
+
   if (
     currentConversation?.id === conversationId &&
     currentConversation.conversation_url?.trim() &&
-    currentConversation.session_api_key?.trim()
+    currentConversation.session_api_key?.trim() &&
+    (!isManagedRuntime || currentConversation.sandbox_status === "RUNNING")
   ) {
     return {
       conversationUrl: currentConversation.conversation_url.trim(),
@@ -37,8 +42,16 @@ export async function resolveConversationRuntime(
     };
   }
 
-  if (getActiveBackend().backend.kind === "cloud") {
+  if (backendKind === "cloud") {
     const [conversation] = await batchGetCloudConversations([conversationId]);
+    return {
+      conversationUrl: conversation?.conversation_url?.trim() ?? null,
+      sessionApiKey: conversation?.session_api_key?.trim() ?? null,
+    };
+  }
+
+  if (backendKind === "sandbox") {
+    const [conversation] = await batchGetSandboxConversations([conversationId]);
     return {
       conversationUrl: conversation?.conversation_url?.trim() ?? null,
       sessionApiKey: conversation?.session_api_key?.trim() ?? null,
@@ -48,7 +61,7 @@ export async function resolveConversationRuntime(
   return { conversationUrl: null, sessionApiKey: null };
 }
 
-function requireCloudRuntime(
+function requireRuntime(
   runtime: ConversationRuntimeContext,
 ): ConversationRuntimeContext & {
   conversationUrl: string;
@@ -67,7 +80,8 @@ function requireCloudRuntime(
 
 /**
  * Upload attachments into the conversation workspace. Local conversations use
- * the bundled agent-server; cloud conversations target the provisioned runtime.
+ * the active local agent-server; managed Sandbox conversations target the
+ * provisioned runtime directly.
  */
 export async function uploadFilesToConversation(
   conversationId: string,
@@ -82,27 +96,34 @@ export async function uploadFilesToConversation(
     conversationId,
     currentConversation,
   );
-  const isCloud = getActiveBackend().backend.kind === "cloud";
+  const backendKind = getActiveBackend().backend.kind;
+  const requiresRuntime = backendKind === "cloud" || backendKind === "sandbox";
 
-  const sessionApiKey =
-    currentConversation?.id === conversationId
+  // For managed runtimes, only use the freshly resolved pair. The conversation
+  // object can still contain a stale URL/key while a Sandbox is pausing or
+  // being reprovisioned; falling back to it can authenticate against a dead
+  // runtime or, worse, pair a new URL with an old key.
+  const sessionApiKey = requiresRuntime
+    ? runtime.sessionApiKey
+    : currentConversation?.id === conversationId
       ? (currentConversation.session_api_key ?? runtime.sessionApiKey)
       : runtime.sessionApiKey;
-  const conversationUrl =
-    currentConversation?.id === conversationId
+  const conversationUrl = requiresRuntime
+    ? runtime.conversationUrl
+    : currentConversation?.id === conversationId
       ? (currentConversation.conversation_url ?? runtime.conversationUrl)
       : runtime.conversationUrl;
 
-  if (isCloud) {
-    const cloudRuntime = requireCloudRuntime({
+  if (requiresRuntime) {
+    const runtimeCredentials = requireRuntime({
       conversationUrl,
       sessionApiKey,
     });
     return uploadFilesToRuntime({
       files,
       workingDir,
-      conversationUrl: cloudRuntime.conversationUrl,
-      sessionApiKey: cloudRuntime.sessionApiKey,
+      conversationUrl: runtimeCredentials.conversationUrl,
+      sessionApiKey: runtimeCredentials.sessionApiKey,
     });
   }
 

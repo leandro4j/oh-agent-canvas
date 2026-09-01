@@ -8,6 +8,55 @@ import { getAgentServerWorkingDir } from "./agent-server-config";
 import { getActiveBackend } from "./backend-registry/active-store";
 import { fetchCloudSkills } from "./cloud/skills-service.api";
 import { getAgentServerClientOptions } from "./agent-server-client-options";
+import { withSandboxControlPlaneClient } from "./sandbox/sandbox-client.api";
+
+const SANDBOX_SKILLS_PAGE_LIMIT = 100;
+
+function normalizeSandboxSkill(item: {
+  name: string;
+  type: string;
+  source: string;
+  triggers?: string[] | null;
+}): SkillInfo {
+  const type =
+    item.type === "repo" || item.type === "agentskills"
+      ? item.type
+      : "knowledge";
+  return {
+    name: item.name,
+    type,
+    source: item.source,
+    triggers: item.triggers ?? undefined,
+  };
+}
+
+async function fetchSandboxSkills(): Promise<SkillInfo[]> {
+  const skills: SkillInfo[] = [];
+  let pageId: string | undefined;
+
+  do {
+    const page = await withSandboxControlPlaneClient((client) =>
+      client.get<{
+        items?: Array<{
+          name: string;
+          type: string;
+          source: string;
+          triggers?: string[] | null;
+        }>;
+        next_page_id?: string | null;
+      }>("/skills/search", {
+        params: {
+          limit: SANDBOX_SKILLS_PAGE_LIMIT,
+          ...(pageId ? { page_id: pageId } : {}),
+        },
+      }),
+    );
+    skills.push(...(page?.items ?? []).map(normalizeSandboxSkill));
+    pageId = page?.next_page_id ?? undefined;
+  } while (pageId);
+
+  return skills;
+}
 
 function catalogEntryToSkillInfo(entry: SkillCatalogEntry): SkillInfo {
   return {
@@ -35,8 +84,17 @@ const PUBLIC_SKILLS: SkillInfo[] = SKILLS_CATALOG.map(catalogEntryToSkillInfo);
 
 class SkillsService {
   static async getSkills(projectDir?: string): Promise<SkillInfo[]> {
-    if (getActiveBackend().backend.kind === "cloud") {
+    const backendKind = getActiveBackend().backend.kind;
+    if (backendKind === "cloud") {
       return fetchCloudSkills();
+    }
+
+    if (backendKind === "sandbox") {
+      try {
+        return [...(await fetchSandboxSkills()), ...PUBLIC_SKILLS];
+      } catch {
+        return PUBLIC_SKILLS;
+      }
     }
 
     // Public skills come from the bundled @openhands/extensions npm package —

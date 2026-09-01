@@ -2,6 +2,7 @@ import { LLMMetadataClient } from "@openhands/typescript-client/clients";
 import { getAgentServerClientOptions } from "../agent-server-client-options";
 import { getActiveBackend } from "../backend-registry/active-store";
 import { callCloudProxy } from "../cloud/proxy";
+import { withSandboxControlPlaneClient } from "../sandbox/sandbox-client.api";
 import type {
   LLMModel,
   LLMModelPage,
@@ -55,6 +56,14 @@ function buildCloudQueryString(
   return str ? `?${str}` : "";
 }
 
+function definedParams(
+  params: Record<string, string | number | boolean | undefined>,
+): Record<string, string | number | boolean> {
+  return Object.fromEntries(
+    Object.entries(params).filter(([, value]) => value !== undefined),
+  ) as Record<string, string | number | boolean>;
+}
+
 class ConfigService {
   /**
    * @param verifiedByProvider - Pre-fetched verified-models map used by the
@@ -83,6 +92,20 @@ class ConfigService {
         method: "GET",
         path: `/api/v1/config/models/search${qs}`,
       });
+    }
+
+    if (active.backend.kind === "sandbox") {
+      return withSandboxControlPlaneClient((client) =>
+        client.get<LLMModelPage>("/config/models/search", {
+          params: definedParams({
+            page_id: params.page_id,
+            limit: params.limit,
+            query: params.query,
+            verified__eq: params.verified__eq,
+            provider__eq: params.provider__eq,
+          }),
+        }),
+      );
     }
 
     const llmClient = new LLMMetadataClient(getAgentServerClientOptions());
@@ -154,6 +177,19 @@ class ConfigService {
         method: "GET",
         path: `/api/v1/config/providers/search${qs}`,
       });
+    }
+
+    if (active.backend.kind === "sandbox") {
+      return withSandboxControlPlaneClient((client) =>
+        client.get<ProviderPage>("/config/providers/search", {
+          params: definedParams({
+            page_id: params.page_id,
+            limit: params.limit,
+            query: params.query,
+            verified__eq: params.verified__eq,
+          }),
+        }),
+      );
     }
 
     const llmClient = new LLMMetadataClient(getAgentServerClientOptions());

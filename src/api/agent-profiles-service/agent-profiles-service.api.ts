@@ -40,6 +40,14 @@ function isCloud(): boolean {
   return getActiveBackend().backend.kind === "cloud";
 }
 
+function isSandbox(): boolean {
+  return getActiveBackend().backend.kind === "sandbox";
+}
+
+const sandboxAgentProfilesUnsupported = (): never => {
+  throw new Error("Agent profiles are not supported by Sandbox Server.");
+};
+
 /**
  * The seeded, well-known baseline agent profile. The backend lazily seeds it to
  * mirror the user's global config (#3719), and onboarding configures it from the
@@ -63,6 +71,12 @@ export type {
 class AgentProfilesService {
   static async listProfiles(): Promise<AgentProfileListResponse> {
     if (isCloud()) return listCloudAgentProfiles();
+    // Sandbox Server stores LLM profiles under /settings/profiles but does not
+    // expose the separate Agent Profile API. Returning an empty collection is
+    // important here: the conversation-create path always warms this query.
+    if (isSandbox()) {
+      return { profiles: [], active_agent_profile_id: null };
+    }
     return new AgentProfilesClient(
       getAgentServerClientOptions(),
     ).listAgentProfiles();
@@ -77,6 +91,7 @@ class AgentProfilesService {
     // `disabled_skills` deny-list of names), so `exposeSecrets` is vestigial and
     // cloud ignores it; kept for local signature parity with ProfilesService.
     if (isCloud()) return getCloudAgentProfile(name);
+    if (isSandbox()) return sandboxAgentProfilesUnsupported();
     const options: GetAgentProfileOptions = exposeSecrets
       ? { exposeSecrets }
       : {};
@@ -91,6 +106,7 @@ class AgentProfilesService {
     profile: AgentProfileSaveInput,
   ): Promise<AgentProfileMutationResponse> {
     if (isCloud()) return saveCloudAgentProfile(name, profile);
+    if (isSandbox()) return sandboxAgentProfilesUnsupported();
     return new AgentProfilesClient(
       getAgentServerClientOptions(),
     ).saveAgentProfile(name, profile);
@@ -100,6 +116,7 @@ class AgentProfilesService {
     name: string,
   ): Promise<AgentProfileMutationResponse> {
     if (isCloud()) return deleteCloudAgentProfile(name);
+    if (isSandbox()) return sandboxAgentProfilesUnsupported();
     return new AgentProfilesClient(
       getAgentServerClientOptions(),
     ).deleteAgentProfile(name);
@@ -110,6 +127,7 @@ class AgentProfilesService {
     newName: string,
   ): Promise<AgentProfileMutationResponse> {
     if (isCloud()) return renameCloudAgentProfile(name, newName);
+    if (isSandbox()) return sandboxAgentProfilesUnsupported();
     return new AgentProfilesClient(
       getAgentServerClientOptions(),
     ).renameAgentProfile(name, newName);
@@ -121,6 +139,7 @@ class AgentProfilesService {
     profileId: string,
   ): Promise<ActivateAgentProfileResponse> {
     if (isCloud()) return activateCloudAgentProfile(profileId);
+    if (isSandbox()) return sandboxAgentProfilesUnsupported();
     return new AgentProfilesClient(
       getAgentServerClientOptions(),
     ).activateAgentProfile(profileId);

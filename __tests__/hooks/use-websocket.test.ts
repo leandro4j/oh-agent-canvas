@@ -362,6 +362,74 @@ describe("useWebSocket", () => {
     }
   });
 
+  it("replaces a same-URL connection when the session key changes", async () => {
+    class MockWebSocket {
+      static readonly CONNECTING = 0;
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      static readonly CLOSED = 3;
+      static readonly instances: MockWebSocket[] = [];
+
+      readonly sent: string[] = [];
+      readyState = MockWebSocket.CONNECTING;
+      onopen: ((event: Event) => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onclose: ((event: CloseEvent) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+
+      constructor(readonly url: string) {
+        MockWebSocket.instances.push(this);
+        queueMicrotask(() => {
+          this.readyState = MockWebSocket.OPEN;
+          this.onopen?.(new Event("open"));
+        });
+      }
+
+      send(data: string) {
+        this.sent.push(data);
+      }
+
+      close() {
+        this.readyState = MockWebSocket.CLOSED;
+      }
+    }
+
+    const originalWebSocket = globalThis.WebSocket;
+    vi.stubGlobal("WebSocket", MockWebSocket);
+
+    try {
+      const { result, rerender, unmount } = renderHook(
+        ({ sessionApiKey }: { sessionApiKey: string }) =>
+          useWebSocket("ws://acme.com/ws", { sessionApiKey }),
+        { initialProps: { sessionApiKey: "old-runtime-key" } },
+      );
+
+      await waitForConnection(result);
+      rerender({ sessionApiKey: "new-runtime-key" });
+
+      await waitFor(() => {
+        expect(MockWebSocket.instances).toHaveLength(2);
+        expect(MockWebSocket.instances[1]?.sent).toEqual([
+          JSON.stringify({
+            type: "auth",
+            session_api_key: "new-runtime-key",
+          }),
+        ]);
+      });
+
+      expect(MockWebSocket.instances[0]?.sent).toEqual([
+        JSON.stringify({
+          type: "auth",
+          session_api_key: "old-runtime-key",
+        }),
+      ]);
+      unmount();
+    } finally {
+      globalThis.WebSocket = originalWebSocket;
+      MockWebSocket.instances.length = 0;
+    }
+  });
+
   // Skipped: flaky in CI - see comment at top of file
   it.skip("should call onOpen handler when WebSocket connection opens", async () => {
     const onOpenSpy = vi.fn();

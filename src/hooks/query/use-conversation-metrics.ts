@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import AgentServerConversationService from "#/api/conversation-service/agent-server-conversation-service.api";
 import { getCombinedMetrics } from "#/utils/conversation-metrics";
 import type { MetricsSnapshot } from "#/api/conversation-service/agent-server-conversation-service.types";
+import { useActiveBackend } from "#/contexts/active-backend-context";
 
 export const useConversationMetrics = (
   conversationId: string | null | undefined,
@@ -13,6 +14,11 @@ export const useConversationMetrics = (
   isLoading: boolean;
   error: unknown;
 } => {
+  const { backend } = useActiveBackend();
+  const requiresRuntime =
+    backend.kind === "cloud" || backend.kind === "sandbox";
+  const hasRuntime = !requiresRuntime || (!!conversationUrl && !!sessionApiKey);
+
   const query = useQuery({
     queryKey: [
       "conversation-metrics",
@@ -34,7 +40,7 @@ export const useConversationMetrics = (
     // served by the ConversationClient fallback in getRuntimeConversation.
     // Gating on it left local conversations with no REST snapshot at all
     // (zeros after a page reload until live WS metrics arrived).
-    enabled: enabled && !!conversationId,
+    enabled: enabled && !!conversationId && hasRuntime,
     staleTime: 1000 * 30,
     gcTime: 1000 * 60 * 5,
     refetchInterval: 1000 * 30,

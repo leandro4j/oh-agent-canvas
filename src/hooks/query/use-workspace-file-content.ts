@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { readCloudConversationFile } from "#/api/cloud/conversation-service.api";
+import AgentServerRuntimeService from "#/api/runtime-service/agent-server-runtime-service";
 import { getActiveBackend } from "#/api/backend-registry/active-store";
 import { getGitPath } from "#/utils/get-git-path";
 import { useActiveConversation } from "#/hooks/query/use-active-conversation";
@@ -159,7 +160,9 @@ export function useWorkspaceFileContent(relativePath: string | null) {
   const selectedRepository = conversation?.selected_repository;
   const workingDir = conversation?.workspace?.working_dir?.trim();
   const baseUrl = workspaceSession?.baseUrl;
-  const isCloud = getActiveBackend().backend.kind === "cloud";
+  const backendKind = getActiveBackend().backend.kind;
+  const isCloud = backendKind === "cloud";
+  const isSandbox = backendKind === "sandbox";
 
   // The cloud `/file` endpoint downloads via the runtime's
   // `/api/file/download`, which rejects relative paths (400 → the cloud API
@@ -178,7 +181,7 @@ export function useWorkspaceFileContent(relativePath: string | null) {
       conversationId,
       conversationUrl,
       sessionApiKey,
-      isCloud ? "cloud" : baseUrl,
+      isCloud ? "cloud" : isSandbox ? "sandbox" : baseUrl,
       relativePath,
       absoluteFilePath,
       workspaceMutationCount,
@@ -233,6 +236,44 @@ export function useWorkspaceFileContent(relativePath: string | null) {
           text: null,
           staticUrl: `data:${mimeType};base64,${arrayBufferToBase64(buf.buffer)}`,
           mimeType,
+        };
+      }
+
+      if (isSandbox) {
+        if (!conversationUrl || !sessionApiKey) {
+          throw new Error(
+            "Conversation sandbox is not running. Resume it before reading files.",
+          );
+        }
+
+        // Sandbox Server owns lifecycle/control-plane data. File bytes come
+        // from the runtime URL and are authenticated with its session key.
+        const buffer = await AgentServerRuntimeService.downloadFile(
+          conversationUrl,
+          sessionApiKey,
+          absoluteFilePath!,
+        );
+        if (kind === "text" && !isLikelyBinary(buffer)) {
+          const text = new TextDecoder("utf-8", { fatal: false }).decode(
+            buffer,
+          );
+          return {
+            path: relativePath,
+            kind: "text",
+            text,
+            staticUrl: `data:${mimeType};charset=utf-8;base64,${arrayBufferToBase64(buffer)}`,
+            mimeType,
+          };
+        }
+
+        const binaryMimeType =
+          kind === "text" ? "application/octet-stream" : mimeType;
+        return {
+          path: relativePath,
+          kind: kind === "text" ? "binary" : kind,
+          text: null,
+          staticUrl: `data:${binaryMimeType};base64,${arrayBufferToBase64(buffer)}`,
+          mimeType: binaryMimeType,
         };
       }
 
@@ -294,7 +335,8 @@ export function useWorkspaceFileContent(relativePath: string | null) {
       runtimeIsReady &&
       !!conversationId &&
       !!relativePath &&
-      (isCloud || !!baseUrl),
+      (isCloud ||
+        (isSandbox ? !!conversationUrl && !!sessionApiKey : !!baseUrl)),
     retry: false,
     staleTime: 1000 * 5,
     gcTime: 1000 * 60,

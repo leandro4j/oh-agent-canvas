@@ -56,6 +56,12 @@ function toAbsoluteRuntimePath(path: string): string {
   return path.startsWith("/") ? path : `/${path}`;
 }
 
+function toDirectRuntimePath(path: string): string {
+  return getActiveBackend().backend.kind === "sandbox"
+    ? toAbsoluteRuntimePath(path)
+    : path;
+}
+
 /**
  * GET an arbitrary runtime git endpoint in both backend modes. Local mode
  * uses the SDK's public `HttpClient` (the typed `gitChanges`/`gitDiff`
@@ -90,7 +96,9 @@ async function getFromRuntime<T>(
 
   const response = await new RemoteWorkspace(
     getAgentServerClientOptions({ conversationUrl, sessionApiKey }),
-  ).client.get<T>(apiPath, { params });
+  ).client.get<T>(apiPath, {
+    params: { ...params, path: toDirectRuntimePath(params.path) },
+  });
   return response.data;
 }
 
@@ -146,7 +154,7 @@ class AgentServerGitService {
     // cloud-proxy branch above already omits `ref`.
     const changes = await new RemoteWorkspace(
       getAgentServerClientOptions({ conversationUrl, sessionApiKey }),
-    ).gitChanges(path);
+    ).gitChanges(toDirectRuntimePath(path));
 
     if (!Array.isArray(changes)) {
       throw new Error(
@@ -269,7 +277,9 @@ class AgentServerGitService {
     // the one the change list was computed against.
     const diff = (await new RemoteWorkspace(
       getAgentServerClientOptions({ conversationUrl, sessionApiKey }),
-    ).gitDiff(path)) as GitChangeDiff & { diff?: string };
+    ).gitDiff(toDirectRuntimePath(path))) as GitChangeDiff & {
+      diff?: string;
+    };
 
     return {
       modified: diff.modified ?? "",

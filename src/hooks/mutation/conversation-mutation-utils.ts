@@ -3,6 +3,10 @@ import { ConversationClient } from "@openhands/typescript-client/clients";
 import type { StartGoalRequest } from "@openhands/typescript-client";
 import { getActiveBackend } from "#/api/backend-registry/active-store";
 import { pauseCloudSandbox } from "#/api/cloud/conversation-service.api";
+import {
+  pauseSandbox,
+  resumeSandbox,
+} from "#/api/sandbox/sandbox-conversation-service.api";
 import { getAgentServerClientOptions } from "#/api/agent-server-client-options";
 import AgentServerConversationService from "#/api/conversation-service/agent-server-conversation-service.api";
 import { AppConversation } from "#/api/conversation-service/agent-server-conversation-service.types";
@@ -42,13 +46,25 @@ export const pauseConversation = async (conversationId: string) => {
   const { conversationUrl, sessionApiKey, sandboxId } =
     await fetchConversationData(conversationId);
 
-  if (getActiveBackend().backend.kind === "cloud") {
+  const activeBackend = getActiveBackend().backend;
+
+  if (activeBackend.kind === "cloud") {
     if (!sandboxId) {
       throw new Error(
         `Cannot stop runtime: cloud conversation ${conversationId} has no sandbox_id.`,
       );
     }
     await pauseCloudSandbox(sandboxId);
+    return { success: true };
+  }
+
+  if (activeBackend.kind === "sandbox") {
+    if (!sandboxId) {
+      throw new Error(
+        `Cannot stop runtime: Sandbox conversation ${conversationId} has no sandbox_id.`,
+      );
+    }
+    await pauseSandbox(sandboxId);
     return { success: true };
   }
 
@@ -115,8 +131,19 @@ export const resumeGoal = async (conversationId: string): Promise<void> => {
 };
 
 export const resumeConversation = async (conversationId: string) => {
-  const { conversationUrl, sessionApiKey } =
+  const { conversationUrl, sessionApiKey, sandboxId } =
     await fetchConversationData(conversationId);
+
+  if (getActiveBackend().backend.kind === "sandbox") {
+    if (!sandboxId) {
+      throw new Error(
+        `Cannot resume runtime: Sandbox conversation ${conversationId} has no sandbox_id.`,
+      );
+    }
+    await resumeSandbox(sandboxId);
+    return { success: true };
+  }
+
   return new ConversationClient(
     getAgentServerClientOptions({ conversationUrl, sessionApiKey }),
   ).runConversation(conversationId);

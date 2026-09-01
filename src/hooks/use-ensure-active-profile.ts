@@ -17,7 +17,8 @@ import { useActivateLlmProfile } from "#/hooks/mutation/use-activate-llm-profile
  */
 export function useEnsureActiveProfile(): void {
   const { backend } = useActiveBackend();
-  const isLocal = backend.kind === "local";
+  const isProfileBackend =
+    backend.kind === "local" || backend.kind === "sandbox";
   const { data: profilesData } = useLlmProfiles();
   const { mutate: activate, isPending } = useActivateLlmProfile();
 
@@ -31,7 +32,7 @@ export function useEnsureActiveProfile(): void {
   }, [backend.id]);
 
   useEffect(() => {
-    if (!isLocal || isPending || !profilesData) return;
+    if (!isProfileBackend || isPending || !profilesData) return;
 
     const { profiles, active_profile: activeProfile } = profilesData;
     const activeValid =
@@ -47,5 +48,5 @@ export function useEnsureActiveProfile(): void {
     if (attemptedRef.current === target.name) return;
     attemptedRef.current = target.name;
     activate(target.name);
-  }, [isLocal, profilesData, isPending, activate]);
+  }, [isProfileBackend, profilesData, isPending, activate]);
 }
