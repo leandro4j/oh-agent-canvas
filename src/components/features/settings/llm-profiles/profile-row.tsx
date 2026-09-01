@@ -18,6 +18,7 @@ interface ProfileRowProps {
   isActive: boolean;
   /** When false, the row is read-only and the actions menu is hidden. */
   canManage: boolean;
+  canDuplicate: boolean;
   onActivate: (name: string) => void;
   onEdit: (profile: ProfileInfo) => void;
   onRename: (profile: ProfileInfo) => void;
@@ -30,6 +31,7 @@ export function ProfileRow({
   profile,
   isActive,
   canManage,
+  canDuplicate,
   onActivate,
   onEdit,
   onRename,
@@ -99,6 +101,7 @@ export function ProfileRow({
               onEdit={() => onEdit(profile)}
               onRename={() => onRename(profile)}
               onDuplicate={() => onDuplicate(profile)}
+              canDuplicate={canDuplicate}
               onSetActive={() => onActivate(profile.name)}
               onDelete={() => onDelete(profile)}
               isActive={isActive}

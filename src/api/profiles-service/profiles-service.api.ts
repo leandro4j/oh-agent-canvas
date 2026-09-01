@@ -130,10 +130,19 @@ class ProfilesService {
   ): Promise<ProfileMutationResponse> {
     if (isCloudBackend()) return saveCloudProfile(name, request);
     if (isSandboxBackend()) {
+      // Sandbox Server never returns profile secrets to the browser. An edit
+      // therefore carries `api_key: null` (or omits it); make the server-side
+      // preservation intent explicit so saving an unchanged profile cannot
+      // clear its stored credential. A new profile with a supplied key still
+      // opts into the normal secret-save path.
+      const sandboxRequest = {
+        ...request,
+        preserve_existing_api_key: request.llm.api_key == null,
+      };
       return withSandboxControlPlaneClient((client) =>
         client.post<ProfileMutationResponse>(
           `/settings/profiles/${encodeURIComponent(name)}`,
-          request,
+          sandboxRequest,
         ),
       );
     }

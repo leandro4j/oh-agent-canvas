@@ -15,7 +15,10 @@ import {
   isAgentServerToolAvailable,
 } from "./agent-server-compatibility";
 import { getAgentServerWorkingDir } from "./agent-server-config";
-import { getEffectiveLocalBackend } from "./backend-registry/active-store";
+import {
+  getActiveBackend,
+  getEffectiveLocalBackend,
+} from "./backend-registry/active-store";
 import { buildAuthHeaders } from "./backend-registry/auth";
 import {
   GetHooksResponse,
@@ -915,11 +918,15 @@ function buildConfiguredOpenHandsAgentSettings(
 ): AgentSettingsPayload {
   const agentSettings = toRecord(settings.agent_settings);
   const llm = toRecord(agentSettings.llm);
+  const defaultModel =
+    getActiveBackend().backend.kind === "sandbox"
+      ? ""
+      : DEFAULT_SETTINGS.llm_model;
 
   llm.model =
     typeof llm.model === "string" && llm.model.trim().length > 0
       ? llm.model
-      : DEFAULT_SETTINGS.llm_model;
+      : defaultModel;
 
   // Stream assistant tokens (parity with ACP agents). The agent-server only
   // emits StreamingDeltaEvents for SDK LLM agents when an LLM has stream=True.

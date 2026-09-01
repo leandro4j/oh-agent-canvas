@@ -227,11 +227,92 @@ const normalizeSandboxSettingsResponse = (
 ): SettingsApiResponse => {
   const response = isRecord(value) ? value : {};
   const agentSettings = isRecord(response.agent_settings)
-    ? (response.agent_settings as Record<string, SettingsValue>)
+    ? ({ ...response.agent_settings } as Record<string, SettingsValue>)
     : {};
   const conversationSettings = isRecord(response.conversation_settings)
-    ? (response.conversation_settings as Record<string, SettingsValue>)
+    ? ({ ...response.conversation_settings } as Record<string, SettingsValue>)
     : {};
+
+  // Sandbox Server versions have returned both the SDK-shaped nested settings
+  // and a flattened compatibility shape. Keep the server's values as the
+  // authority in either case. Never copy a top-level `llm_api_key` here: the
+  // control plane intentionally redacts it and Canvas must not create a new
+  // plaintext-secret transport.
+  const llm = isRecord(agentSettings.llm)
+    ? ({ ...agentSettings.llm } as Record<string, SettingsValue>)
+    : {};
+  // Sandbox owns the credential and may return a null/masked compatibility
+  // value in the nested SDK shape. Never forward that display value into a
+  // conversation or a later settings write.
+  delete llm.api_key;
+  if (
+    typeof response.llm_model === "string" &&
+    (typeof llm.model !== "string" || llm.model.trim().length === 0)
+  ) {
+    llm.model = response.llm_model;
+  }
+  if (
+    typeof response.llm_base_url === "string" &&
+    typeof llm.base_url !== "string"
+  ) {
+    llm.base_url = response.llm_base_url;
+  }
+  if (Object.keys(llm).length > 0) {
+    agentSettings.llm = llm;
+  } else {
+    delete agentSettings.llm;
+  }
+
+  const condenser = isRecord(agentSettings.condenser)
+    ? ({ ...agentSettings.condenser } as Record<string, SettingsValue>)
+    : {};
+  if (
+    typeof response.enable_default_condenser === "boolean" &&
+    typeof condenser.enabled !== "boolean"
+  ) {
+    condenser.enabled = response.enable_default_condenser;
+  }
+  if (
+    typeof response.condenser_max_size === "number" &&
+    typeof condenser.max_size !== "number"
+  ) {
+    condenser.max_size = response.condenser_max_size;
+  }
+  if (Object.keys(condenser).length > 0) {
+    agentSettings.condenser = condenser;
+  }
+  if (
+    typeof response.agent === "string" &&
+    typeof agentSettings.agent !== "string"
+  ) {
+    agentSettings.agent = response.agent;
+  }
+  if (
+    response.mcp_config !== undefined &&
+    agentSettings.mcp_config === undefined
+  ) {
+    agentSettings.mcp_config = response.mcp_config as SettingsValue;
+  }
+
+  if (
+    typeof response.confirmation_mode === "boolean" &&
+    typeof conversationSettings.confirmation_mode !== "boolean"
+  ) {
+    conversationSettings.confirmation_mode = response.confirmation_mode;
+  }
+  if (
+    (typeof response.security_analyzer === "string" ||
+      response.security_analyzer === null) &&
+    conversationSettings.security_analyzer === undefined
+  ) {
+    conversationSettings.security_analyzer = response.security_analyzer;
+  }
+  if (
+    typeof response.max_iterations === "number" &&
+    typeof conversationSettings.max_iterations !== "number"
+  ) {
+    conversationSettings.max_iterations = response.max_iterations;
+  }
   const existingMisc = isRecord(response.misc_settings)
     ? response.misc_settings
     : {};
@@ -478,21 +559,34 @@ const transformApiResponse = (
  * Sync derived settings fields from agent_settings and conversation_settings.
  * This ensures backward compatibility with code that reads top-level fields.
  */
-const syncDerivedSettings = (settings: Partial<Settings>): Settings => {
+const syncDerivedSettings = (
+  settings: Partial<Settings>,
+  options: { preserveRuntimeLlmIdentity?: boolean } = {},
+): Settings => {
+  const defaults = deepClone(DEFAULT_SETTINGS);
+  if (options.preserveRuntimeLlmIdentity) {
+    // Sandbox Server owns model/provider identity. Do not let an omitted or
+    // temporarily unavailable control-plane value turn into Canvas's bundled
+    // default model before the next successful settings read.
+    defaults.llm_model = "";
+    const defaultLlm = defaults.agent_settings?.llm;
+    if (isRecord(defaultLlm)) delete defaultLlm.model;
+  }
+
   const agentSettings = mergeRecords(
-    DEFAULT_SETTINGS.agent_settings ?? {},
+    defaults.agent_settings ?? {},
     settings.agent_settings ?? {},
   );
   const conversationSettings = mergeRecords(
-    DEFAULT_SETTINGS.conversation_settings ?? {},
+    defaults.conversation_settings ?? {},
     settings.conversation_settings ?? {},
   );
 
   const merged = {
-    ...deepClone(DEFAULT_SETTINGS),
+    ...defaults,
     ...settings,
     provider_tokens_set: {
-      ...(DEFAULT_SETTINGS.provider_tokens_set ?? {}),
+      ...(defaults.provider_tokens_set ?? {}),
       ...(settings.provider_tokens_set ?? {}),
     },
     agent_settings: agentSettings,
@@ -595,11 +689,18 @@ class SettingsService {
       }
     }
 
+    const isSandbox = getActiveBackend().backend.kind === "sandbox";
+    const syncOptions = isSandbox
+      ? { preserveRuntimeLlmIdentity: true }
+      : undefined;
     const backendKey = prepareCacheForActiveBackend();
 
     // Check cache first
     if (isCacheValid(backendKey) && settingsCache.redacted) {
-      return syncDerivedSettings(transformApiResponse(settingsCache.redacted));
+      return syncDerivedSettings(
+        transformApiResponse(settingsCache.redacted),
+        syncOptions,
+      );
     }
 
     try {
@@ -607,11 +708,11 @@ class SettingsService {
       settingsCache.redacted = response;
       settingsCache.timestamp = Date.now();
       settingsCache.backendKey = backendKey;
-      return syncDerivedSettings(transformApiResponse(response));
+      return syncDerivedSettings(transformApiResponse(response), syncOptions);
     } catch (error) {
       // If API fails, return defaults
       console.warn("Failed to fetch settings from API, using defaults:", error);
-      return syncDerivedSettings({});
+      return syncDerivedSettings({}, syncOptions);
     }
   }
 

@@ -11,6 +11,7 @@ import {
   getBackendTelemetryProperties,
 } from "#/services/telemetry-context";
 import { setTelemetryBackendContext, trackEvent } from "#/services/telemetry";
+import { supportsBackendFeature } from "#/api/backend-registry/capabilities";
 
 /**
  * Stable semantic identifier for an onboarding link or CTA. Identifies the
@@ -77,6 +78,7 @@ export const useTracking = () => {
    */
   const track = (event: string, properties: Record<string, unknown> = {}) => {
     setTelemetryBackendContext(getBackendTelemetryContext());
+    if (!supportsBackendFeature(backend, "telemetry")) return;
     void trackEvent(event, { ...commonProperties, ...properties });
   };
 

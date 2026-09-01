@@ -28,12 +28,18 @@ export function useSyncAutomationTelemetryConsent() {
 
     const resolvedConsent = consent === "granted" ? "granted" : "denied";
     const pendingActor = consent === "pending" ? pendingRevocationId : "";
-    const syncKey = `${backend.id}:${backend.host}:${backend.apiKey ?? ""}:${resolvedConsent}:${pendingActor}`;
+    const syncKey = `${backend.id}:${backend.host}:${backend.connectionRevision ?? 0}:${resolvedConsent}:${pendingActor}`;
     if (lastSyncKeyRef.current === syncKey) return;
     lastSyncKeyRef.current = syncKey;
 
     void AutomationService.syncTelemetryConsent(resolvedConsent).catch(
       () => {},
     );
-  }, [backend.apiKey, backend.host, backend.id, backend.kind, consent]);
+  }, [
+    backend.connectionRevision,
+    backend.host,
+    backend.id,
+    backend.kind,
+    consent,
+  ]);
 }

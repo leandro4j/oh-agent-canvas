@@ -46,6 +46,8 @@ import {
   type BackendTelemetryContextInput,
   type CloudTelemetryContextInput,
 } from "#/services/telemetry-context";
+import { supportsBackendFeature } from "#/api/backend-registry/capabilities";
+import { getActiveBackend } from "#/api/backend-registry/active-store";
 
 const TELEMETRY_CONSENT_KEY = "openhands-telemetry-consent";
 const TELEMETRY_CONSENT_PENDING_CLOUD_SYNC_KEY =
@@ -135,11 +137,22 @@ const CANVAS_EVENT_PROPERTIES = Object.freeze({
 
 let telemetryBackendContext = getBackendTelemetryProperties({});
 let telemetryCloudContext = getCloudTelemetryProperties();
+let telemetryCaptureAllowedForBackend = true;
+
+function isTelemetryCaptureAllowedForBackend(): boolean {
+  return (
+    telemetryCaptureAllowedForBackend &&
+    supportsBackendFeature(getActiveBackend().backend, "telemetry")
+  );
+}
 
 export function setTelemetryBackendContext(
   context: BackendTelemetryContextInput,
 ): void {
   telemetryBackendContext = getBackendTelemetryProperties(context);
+  telemetryCaptureAllowedForBackend = context.backendKind
+    ? supportsBackendFeature(context.backendKind, "telemetry")
+    : true;
 }
 
 export function setTelemetryCloudContext(
@@ -689,7 +702,7 @@ function markFirstUseSent(): void {
  */
 export async function trackInstall(): Promise<void> {
   // Respect hard opt-out via environment variable or browser setting
-  if (isDoNotTrackEnabled()) {
+  if (isDoNotTrackEnabled() || !isTelemetryCaptureAllowedForBackend()) {
     return;
   }
 
@@ -700,7 +713,11 @@ export async function trackInstall(): Promise<void> {
 
   // Initialize PostHog with capturing enabled (for this one event)
   const posthog = await initializePostHogClient(true);
-  if (!posthog || isDoNotTrackEnabled()) {
+  if (
+    !posthog ||
+    isDoNotTrackEnabled() ||
+    !isTelemetryCaptureAllowedForBackend()
+  ) {
     return;
   }
 
@@ -763,10 +780,17 @@ function markSessionSent(): void {
 
 /** Return the shared client only when a consented capture is safe to emit. */
 async function getPostHogForConsentedCapture(): Promise<PostHog | null> {
+  if (!isTelemetryCaptureAllowedForBackend()) return null;
   if (!isTelemetryEnabled() || getTelemetryConsent() !== "granted") return null;
 
   const posthog = await initializePostHogClient();
-  if (!posthog || !isTelemetryEnabled()) return null;
+  if (
+    !posthog ||
+    !isTelemetryEnabled() ||
+    !isTelemetryCaptureAllowedForBackend()
+  ) {
+    return null;
+  }
 
   // The browser preference is the canonical capture decision. PostHog may
   // still carry an older opt-out marker while backend consent is loading or
@@ -821,10 +845,17 @@ export async function getTelemetryDistinctIdForConsentSync(): Promise<
     if (pendingRevocationId) return pendingRevocationId;
   }
 
-  if (telemetryDisabled || isDoNotTrackEnabled()) return null;
+  if (
+    telemetryDisabled ||
+    isDoNotTrackEnabled() ||
+    !isTelemetryCaptureAllowedForBackend()
+  ) {
+    return null;
+  }
 
   const posthog = await initializePostHogClient();
-  return posthog?.get_distinct_id?.() ?? null;
+  if (!posthog || !isTelemetryCaptureAllowedForBackend()) return null;
+  return posthog.get_distinct_id?.() ?? null;
 }
 
 /**
@@ -877,6 +908,7 @@ export async function clearTelemetryData(): Promise<void> {
 
   telemetryBackendContext = getBackendTelemetryProperties({});
   telemetryCloudContext = getCloudTelemetryProperties();
+  telemetryCaptureAllowedForBackend = true;
   desiredTelemetryIdentity = null;
   desiredIdentityRevision += 1;
   appliedIdentityRevision = -1;

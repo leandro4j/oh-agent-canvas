@@ -3,7 +3,10 @@ import axios from "axios";
 import { DEFAULT_SETTINGS } from "#/services/settings";
 import { Settings, SettingsScope, SettingsValue } from "#/types/settings";
 import SettingsService from "#/api/settings-service/settings-service.api";
-import { isNoBackend } from "#/api/backend-registry/active-store";
+import {
+  getActiveBackend,
+  isNoBackend,
+} from "#/api/backend-registry/active-store";
 import { useActiveBackend } from "#/contexts/active-backend-context";
 import { SETTINGS_QUERY_KEYS } from "#/hooks/query/query-keys";
 import {
@@ -51,7 +54,13 @@ const resolveSdkString = (
   return defaultValue;
 };
 
-const normalizeSettingsResponse = (settings: Partial<Settings>): Settings => {
+const normalizeSettingsResponse = (
+  settings: Partial<Settings>,
+  options: { preserveRuntimeLlmIdentity?: boolean } = {},
+): Settings => {
+  const defaultLlmModel = options.preserveRuntimeLlmIdentity
+    ? ""
+    : DEFAULT_SETTINGS.llm_model;
   const agentSettings = (settings.agent_settings ?? {}) as Record<
     string,
     unknown
@@ -72,11 +81,7 @@ const normalizeSettingsResponse = (settings: Partial<Settings>): Settings => {
   return {
     ...DEFAULT_SETTINGS,
     ...settings,
-    llm_model: resolveSdkString(
-      agentSettings,
-      "llm.model",
-      DEFAULT_SETTINGS.llm_model,
-    ),
+    llm_model: resolveSdkString(agentSettings, "llm.model", defaultLlmModel),
     llm_base_url: resolveSdkString(
       agentSettings,
       "llm.base_url",
@@ -126,7 +131,9 @@ export const getSettingsQueryFn = async (
   }
 
   const settings = await SettingsService.getSettings();
-  return normalizeSettingsResponse(settings);
+  return normalizeSettingsResponse(settings, {
+    preserveRuntimeLlmIdentity: getActiveBackend().backend.kind === "sandbox",
+  });
 };
 
 export const useSettings = (scope: SettingsScope = "personal") => {
@@ -140,6 +147,8 @@ export const useSettings = (scope: SettingsScope = "personal") => {
       ...SETTINGS_QUERY_KEYS.byScope(scope),
       active.backend.id,
       active.orgId,
+      active.backend.kind,
+      active.backend.connectionRevision ?? 0,
     ],
     queryFn: () => getSettingsQueryFn(scope),
     retry: (_, error) => getErrorStatus(error) !== 404,

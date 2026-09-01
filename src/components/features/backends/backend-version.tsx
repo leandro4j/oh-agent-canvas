@@ -9,8 +9,17 @@ import { I18nKey } from "#/i18n/declaration";
 
 export function BackendVersion({ backend }: { backend: Backend }) {
   const { t } = useTranslation("openhands");
+  // The credential is intentionally excluded; connectionRevision re-keys
+  // this query whenever the host or credential changes.
+  // eslint-disable-next-line @tanstack/query/exhaustive-deps
   const { data: version } = useQuery({
-    queryKey: ["backend-version", backend.host, backend.apiKey],
+    queryKey: [
+      "backend-version",
+      backend.id,
+      backend.host,
+      backend.kind,
+      backend.connectionRevision ?? 0,
+    ],
     queryFn: async () => {
       const info = await new ServerClient(
         getAgentServerClientOptions({

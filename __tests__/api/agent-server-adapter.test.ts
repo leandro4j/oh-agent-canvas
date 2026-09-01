@@ -29,12 +29,31 @@ const {
   mockGetAgentServerWorkingDir,
   mockIsAgentServerToolAvailable,
   mockGetEffectiveLocalBackend,
+  mockGetActiveBackend,
+  mockGetEffectiveDirectRuntimeBackend,
   mockGetCachedAgentServerInfo,
   mockGetServerInfo,
 } = vi.hoisted(() => ({
   mockGetAgentServerWorkingDir: vi.fn(() => "/workspace/project/agent-canvas"),
   mockIsAgentServerToolAvailable: vi.fn((_toolName: string) => true),
   mockGetEffectiveLocalBackend: vi.fn(() => ({
+    id: "default-local",
+    name: "Local backend",
+    host: "http://127.0.0.1:8000",
+    apiKey: "session-key",
+    kind: "local" as const,
+  })),
+  mockGetActiveBackend: vi.fn(() => ({
+    backend: {
+      id: "default-local",
+      name: "Local backend",
+      host: "http://127.0.0.1:8000",
+      apiKey: "session-key",
+      kind: "local" as const,
+    },
+    orgId: null,
+  })),
+  mockGetEffectiveDirectRuntimeBackend: vi.fn(() => ({
     id: "default-local",
     name: "Local backend",
     host: "http://127.0.0.1:8000",
@@ -68,6 +87,8 @@ vi.mock("#/api/agent-server-compatibility", () => ({
 
 vi.mock("#/api/backend-registry/active-store", () => ({
   getEffectiveLocalBackend: mockGetEffectiveLocalBackend,
+  getActiveBackend: mockGetActiveBackend,
+  getEffectiveDirectRuntimeBackend: mockGetEffectiveDirectRuntimeBackend,
 }));
 
 beforeEach(() => {
@@ -75,6 +96,23 @@ beforeEach(() => {
   mockGetCachedAgentServerInfo.mockReturnValue(null);
   mockGetServerInfo.mockReset();
   mockGetEffectiveLocalBackend.mockReturnValue({
+    id: "default-local",
+    name: "Local backend",
+    host: "http://127.0.0.1:8000",
+    apiKey: "session-key",
+    kind: "local",
+  });
+  mockGetActiveBackend.mockReturnValue({
+    backend: {
+      id: "default-local",
+      name: "Local backend",
+      host: "http://127.0.0.1:8000",
+      apiKey: "session-key",
+      kind: "local",
+    },
+    orgId: null,
+  });
+  mockGetEffectiveDirectRuntimeBackend.mockReturnValue({
     id: "default-local",
     name: "Local backend",
     host: "http://127.0.0.1:8000",

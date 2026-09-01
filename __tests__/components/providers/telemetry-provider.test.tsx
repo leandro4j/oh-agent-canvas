@@ -8,6 +8,11 @@ vi.mock("#/hooks/use-telemetry", () => ({
 }));
 
 import { TelemetryProvider } from "#/components/providers/telemetry-provider";
+import { ActiveBackendProvider } from "#/contexts/active-backend-context";
+import {
+  setActiveSelection,
+  setRegisteredBackends,
+} from "#/api/backend-registry/active-store";
 import * as telemetry from "#/services/telemetry";
 
 const runtimeConfig = {
@@ -37,6 +42,8 @@ describe("TelemetryProvider", () => {
   });
 
   afterEach(() => {
+    setActiveSelection(null);
+    setRegisteredBackends([]);
     vi.restoreAllMocks();
   });
 
@@ -114,6 +121,32 @@ describe("TelemetryProvider", () => {
       <TelemetryProvider config={false}>
         <div data-testid="child" />
       </TelemetryProvider>,
+    );
+
+    expect(screen.getByTestId("child")).toBeInTheDocument();
+    expect(configureTelemetryMock).toHaveBeenCalledWith(false);
+    expect(initializeClientMock).not.toHaveBeenCalled();
+    expect(useTelemetryMock).not.toHaveBeenCalled();
+  });
+
+  it("disables telemetry for a Sandbox backend", () => {
+    setRegisteredBackends([
+      {
+        id: "sandbox-1",
+        name: "Sandbox",
+        host: "https://sandbox.example.com",
+        apiKey: "session-key",
+        kind: "sandbox",
+      },
+    ]);
+    setActiveSelection({ backendId: "sandbox-1", orgId: null });
+
+    render(
+      <ActiveBackendProvider>
+        <TelemetryProvider config={runtimeConfig}>
+          <div data-testid="child" />
+        </TelemetryProvider>
+      </ActiveBackendProvider>,
     );
 
     expect(screen.getByTestId("child")).toBeInTheDocument();

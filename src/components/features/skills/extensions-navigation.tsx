@@ -12,13 +12,16 @@ import {
 import { I18nKey } from "#/i18n/declaration";
 import { useActiveBackendContext } from "#/contexts/active-backend-context";
 import { isNoBackend } from "#/api/backend-registry/active-store";
+import {
+  supportsBackendFeature,
+  usesManagedCloud,
+} from "#/api/backend-registry/capabilities";
+import type { Backend } from "#/api/backend-registry/types";
 
-/** Only the Skills item points to a cloud-hosted page today. */
+/** Only the Skills item points to a managed-Cloud-hosted page today. */
 const CLOUD_LINKED_EXTENSION_PATH = "/skills";
-/** Backend-installed artifacts are not available on Cloud backends yet. */
-const CLOUD_HIDDEN_EXTENSION_PATHS = new Set(["/plugins", "/extensions"]);
 
-interface ExtensionNavItem {
+export interface ExtensionNavItem {
   to: string;
   label: string;
   icon: React.ReactElement;
@@ -70,11 +73,32 @@ export const EXTENSIONS_NAV_ITEMS: ExtensionNavItem[] = [
   },
 ];
 
+export function getVisibleExtensionNavItems(
+  backend: Backend,
+): ExtensionNavItem[] {
+  if (isNoBackend(backend)) return EXTENSIONS_NAV_ITEMS;
+  return EXTENSIONS_NAV_ITEMS.filter((item) => {
+    if (item.to === "/plugins") {
+      return supportsBackendFeature(backend, "plugins");
+    }
+    if (item.to === "/extensions") {
+      return supportsBackendFeature(backend, "canvasExtensions");
+    }
+    return true;
+  });
+}
+
+export function isCloudLinkedExtensionItem(
+  backend: Backend,
+  item: ExtensionNavItem,
+): boolean {
+  return item.to === CLOUD_LINKED_EXTENSION_PATH && usesManagedCloud(backend);
+}
+
 export function ExtensionsNavigation() {
   const { t } = useTranslation("openhands");
   const { active } = useActiveBackendContext();
   const { backend } = active;
-  const isCloudBackend = !isNoBackend(backend) && backend.kind === "cloud";
 
   return (
     <aside
@@ -85,12 +109,8 @@ export function ExtensionsNavigation() {
         {t(I18nKey.NAV$CUSTOMIZE)}
       </span>
       <div className="flex flex-col gap-0.5 pt-0.5">
-        {EXTENSIONS_NAV_ITEMS.filter(
-          (item) =>
-            !(CLOUD_HIDDEN_EXTENSION_PATHS.has(item.to) && isCloudBackend),
-        ).map((item) => {
-          const isCloudSkillsLink =
-            item.to === CLOUD_LINKED_EXTENSION_PATH && isCloudBackend;
+        {getVisibleExtensionNavItems(backend).map((item) => {
+          const isCloudSkillsLink = isCloudLinkedExtensionItem(backend, item);
           const baseRow = (
             <span className="shrink-0 flex items-center justify-center">
               {item.icon}

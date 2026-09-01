@@ -20,6 +20,7 @@ interface ProfileActionsMenuProps {
   onEdit: () => void;
   onRename: () => void;
   onDuplicate: () => void;
+  canDuplicate: boolean;
   onSetActive: () => void;
   onDelete: () => void;
   isActive: boolean;
@@ -38,6 +39,7 @@ export function ProfileActionsMenu({
   onEdit,
   onRename,
   onDuplicate,
+  canDuplicate,
   onSetActive,
   onDelete,
   isActive,
@@ -131,6 +133,8 @@ export function ProfileActionsMenu({
   );
 
   const setActiveDisabled = isActive || isActivating;
+  const setActiveIndex = canDuplicate ? 3 : 2;
+  const deleteIndex = setActiveIndex + 1;
   const isPortaled = Boolean(anchorElement);
 
   const menu = (
@@ -164,17 +168,19 @@ export function ProfileActionsMenu({
         menuItemsRef={menuItemsRef}
         testId="profile-rename"
       />
+      {canDuplicate ? (
+        <MenuItem
+          index={2}
+          icon={<Copy aria-hidden className="size-4" strokeWidth={2} />}
+          label={t(I18nKey.BUTTON$DUPLICATE)}
+          onClick={() => handleAction(onDuplicate)}
+          onKeyDown={handleKeyDown}
+          menuItemsRef={menuItemsRef}
+          testId="profile-duplicate"
+        />
+      ) : null}
       <MenuItem
-        index={2}
-        icon={<Copy aria-hidden className="size-4" strokeWidth={2} />}
-        label={t(I18nKey.BUTTON$DUPLICATE)}
-        onClick={() => handleAction(onDuplicate)}
-        onKeyDown={handleKeyDown}
-        menuItemsRef={menuItemsRef}
-        testId="profile-duplicate"
-      />
-      <MenuItem
-        index={3}
+        index={setActiveIndex}
         icon={<CheckCircleIcon width={16} height={16} />}
         label={t(I18nKey.SETTINGS$PROFILE_SET_DEFAULT)}
         onClick={() => handleAction(onSetActive)}
@@ -186,7 +192,7 @@ export function ProfileActionsMenu({
       {/* The active profile can be deleted: useEnsureActiveProfile then promotes
           another remaining profile so a profile is always active in local mode. */}
       <MenuItem
-        index={4}
+        index={deleteIndex}
         icon={<DeleteIcon width={16} height={16} />}
         label={t(I18nKey.BUTTON$DELETE)}
         onClick={() => handleAction(onDelete)}
