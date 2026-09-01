@@ -5,6 +5,10 @@ import { useActiveBackend } from "#/contexts/active-backend-context";
 import { useActiveConversation } from "#/hooks/query/use-active-conversation";
 import { useRuntimeIsReady } from "#/hooks/use-runtime-is-ready";
 import { getGitPath } from "#/utils/get-git-path";
+import {
+  isSandboxBackend,
+  usesDirectRuntime,
+} from "#/api/backend-registry/capabilities";
 
 /**
  * Probes whether the conversation's working-directory git repository has
@@ -32,8 +36,7 @@ export function useHasGitCommits(options?: { enabled?: boolean }): {
   const { data: conversation } = useActiveConversation();
   const runtimeIsReady = useRuntimeIsReady();
   const { backend } = useActiveBackend();
-  const usesDirectRuntime =
-    backend.kind === "local" || backend.kind === "sandbox";
+  const hasDirectRuntime = usesDirectRuntime(backend);
 
   const conversationId = conversation?.id;
   const conversationUrl = conversation?.conversation_url;
@@ -43,20 +46,19 @@ export function useHasGitCommits(options?: { enabled?: boolean }): {
     conversation?.selected_repository,
     configuredWorkingDir,
   );
-  const workingDir =
-    backend.kind === "sandbox"
-      ? sandboxWorkingDir.startsWith("/")
-        ? sandboxWorkingDir
-        : `/${sandboxWorkingDir}`
-      : configuredWorkingDir;
+  const workingDir = isSandboxBackend(backend)
+    ? sandboxWorkingDir.startsWith("/")
+      ? sandboxWorkingDir
+      : `/${sandboxWorkingDir}`
+    : configuredWorkingDir;
 
   const enabled =
     (options?.enabled ?? true) &&
-    usesDirectRuntime &&
+    hasDirectRuntime &&
     runtimeIsReady &&
     !!conversationId &&
     !!workingDir &&
-    (backend.kind !== "sandbox" || (!!conversationUrl && !!sessionApiKey));
+    (!isSandboxBackend(backend) || (!!conversationUrl && !!sessionApiKey));
 
   const query = useQuery<boolean>({
     queryKey: [

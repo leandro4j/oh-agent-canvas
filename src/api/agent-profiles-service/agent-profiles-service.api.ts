@@ -27,6 +27,7 @@ import type {
 } from "@openhands/typescript-client";
 import { getAgentServerClientOptions } from "../agent-server-client-options";
 import { getActiveBackend } from "../backend-registry/active-store";
+import { isSandboxBackend as hasSandboxBackendMode } from "../backend-registry/capabilities";
 import {
   listCloudAgentProfiles,
   getCloudAgentProfile,
@@ -41,7 +42,7 @@ function isCloud(): boolean {
 }
 
 function isSandbox(): boolean {
-  return getActiveBackend().backend.kind === "sandbox";
+  return hasSandboxBackendMode(getActiveBackend().backend);
 }
 
 const sandboxAgentProfilesUnsupported = (): never => {

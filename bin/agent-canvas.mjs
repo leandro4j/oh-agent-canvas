@@ -14,6 +14,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseAgentCanvasMode } from "./agent-canvas-options.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PKG_JSON = join(__dirname, "..", "package.json");
@@ -52,8 +53,8 @@ Override versions via environment variables:
   process.exit(0);
 }
 const isPublic = args.includes("--public");
-const isFrontendOnly = args.includes("--frontend-only");
-const isBackendOnly = args.includes("--backend-only");
+const { frontendOnly: isFrontendOnly, backendOnly: isBackendOnly } =
+  parseAgentCanvasMode(args);
 
 if (args.includes("-h") || args.includes("--help")) {
   console.log(`
@@ -76,6 +77,7 @@ AUTH MODES:
 OPTIONS:
   -p, --port <port>     Ingress port (default: 8000)
   --public              Enable public mode (see above)
+  --sandbox             Sandbox-backed UI only; do not start bundled backends
   --frontend-only       Start only the static frontend behind ingress
   --backend-only        Start only agent-server + automation behind ingress
   -v, --version         Show version number
@@ -109,6 +111,9 @@ EXAMPLES:
 
   # Start only the static frontend behind ingress
   npx @openhands/agent-canvas --frontend-only
+
+  # Start the UI for Sandbox Server without bundled local backends
+  npx @openhands/agent-canvas --sandbox
 
   # Start only the agent-server and automation backend behind ingress
   npx @openhands/agent-canvas --backend-only
@@ -164,6 +169,8 @@ main({
   staticDir: BUILD_DIR,
   mode: "agent-canvas",
   isPublic,
+  frontendOnly: isFrontendOnly,
+  backendOnly: isBackendOnly,
 }).catch((err) => {
   console.error(`Fatal error: ${err.message}`);
   if (err.stack) {

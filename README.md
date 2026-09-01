@@ -77,6 +77,7 @@ The `agent-canvas` command starts the full local stack by default. You can also 
 ```sh
 agent-canvas --frontend-only  # static frontend + ingress only
 agent-canvas --backend-only   # agent server + automation backend + ingress only
+agent-canvas --sandbox        # Sandbox Server UI; no bundled local backends
 ```
 
 ### Option 2: With a Docker Sandbox

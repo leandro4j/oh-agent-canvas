@@ -5,6 +5,10 @@ import BashService from "#/api/bash-service/bash-service.api";
 import { useActiveBackend } from "#/contexts/active-backend-context";
 import type { SandboxStatus } from "#/api/conversation-service/agent-server-conversation-service.types";
 import { useUserConversation } from "./use-user-conversation";
+import {
+  isSandboxBackend,
+  usesControlPlane,
+} from "#/api/backend-registry/capabilities";
 
 export const BASH_COMMAND_LOGS_QUERY_KEY = ["bash-command-logs"] as const;
 
@@ -128,8 +132,7 @@ export function useBashCommandLogs(options: UseBashCommandLogsOptions) {
   const conversationUrl = conversation?.conversation_url ?? null;
   const sessionApiKey = conversation?.session_api_key ?? null;
 
-  const isManagedRuntime =
-    active.backend.kind === "cloud" || active.backend.kind === "sandbox";
+  const isManagedRuntime = usesControlPlane(active.backend);
   const conversationFetched = conversationQuery.isFetched;
 
   // Resolve a single "sandbox issue" only for managed runtime backends. Local
@@ -149,12 +152,11 @@ export function useBashCommandLogs(options: UseBashCommandLogsOptions) {
 
   // Managed runtime backends need the conversation URL and its matching key;
   // local agent-server conversations can use the shared backend host.
-  const hasRequiredAuth =
-    active.backend.kind === "sandbox"
-      ? !!conversationUrl && !!sessionApiKey
-      : isManagedRuntime
-        ? !!conversationUrl
-        : true;
+  const hasRequiredAuth = isSandboxBackend(active.backend)
+    ? !!conversationUrl && !!sessionApiKey
+    : isManagedRuntime
+      ? !!conversationUrl
+      : true;
   const canFire =
     enabled &&
     !!bashCommandId &&

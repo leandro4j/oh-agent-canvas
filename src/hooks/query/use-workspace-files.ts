@@ -5,14 +5,15 @@ import AgentServerRuntimeService from "#/api/runtime-service/agent-server-runtim
 import { listCloudConversationFiles } from "#/api/cloud/conversation-service.api";
 import { DEFAULT_WORKING_DIR } from "#/api/agent-server-config";
 import {
-  getActiveBackend,
   getSnapshot,
   subscribeActiveBackend,
 } from "#/api/backend-registry/active-store";
+import type { Backend } from "#/api/backend-registry/types";
 import { useActiveConversation } from "#/hooks/query/use-active-conversation";
 import { useOptionalConversationId } from "#/hooks/use-conversation-id";
 import { useRuntimeIsReady } from "#/hooks/use-runtime-is-ready";
 import { getGitPath } from "#/utils/get-git-path";
+import { isSandboxBackend } from "#/api/backend-registry/capabilities";
 
 // Cap the number of files we render so a giant repo doesn't freeze the UI.
 const MAX_FILES = 2000;
@@ -76,20 +77,21 @@ function getSandboxWorkingDir(
  * backends hit a first-class cloud API listing endpoint instead — see
  * `useCloudWorkspaceFiles`.
  */
-function useLocalWorkspaceFiles(enabled: boolean): WorkspaceFilesResult {
+function useLocalWorkspaceFiles(
+  enabled: boolean,
+  activeBackend: Backend,
+): WorkspaceFilesResult {
   const { data: conversation } = useActiveConversation();
   const runtimeIsReady = useRuntimeIsReady();
-  const activeBackend = getActiveBackend().backend;
 
   const conversationId = conversation?.id;
   const conversationUrl = conversation?.conversation_url;
   const sessionApiKey = conversation?.session_api_key;
   const selectedRepository = conversation?.selected_repository;
   const configuredWorkingDir = conversation?.workspace?.working_dir?.trim();
-  const workingDir =
-    activeBackend.kind === "sandbox"
-      ? getSandboxWorkingDir(selectedRepository, configuredWorkingDir)
-      : configuredWorkingDir;
+  const workingDir = isSandboxBackend(activeBackend)
+    ? getSandboxWorkingDir(selectedRepository, configuredWorkingDir)
+    : configuredWorkingDir;
 
   const query = useQuery<string[]>({
     queryKey: [
@@ -148,7 +150,10 @@ function useLocalWorkspaceFiles(enabled: boolean): WorkspaceFilesResult {
  * the whole tree — matching the local-backend experience. Paths come back
  * relative to the working dir (e.g. `src/index.html`).
  */
-function useCloudWorkspaceFiles(enabled: boolean): WorkspaceFilesResult {
+function useCloudWorkspaceFiles(
+  enabled: boolean,
+  activeBackend: Backend,
+): WorkspaceFilesResult {
   // Source the id from the route (like the diff/commits cloud hooks), NOT from
   // `useActiveConversation().data.id`: the cloud API listing call only needs
   // the id, and gating on the batch-get query's data would keep the query
@@ -156,7 +161,6 @@ function useCloudWorkspaceFiles(enabled: boolean): WorkspaceFilesResult {
   const { conversationId } = useOptionalConversationId();
   const { data: conversation } = useActiveConversation();
   const runtimeIsReady = useRuntimeIsReady();
-  const activeBackend = getActiveBackend().backend;
 
   const selectedRepository = conversation?.selected_repository;
   const workingDir = conversation?.workspace?.working_dir?.trim();
@@ -220,8 +224,8 @@ export function useWorkspaceFiles(): WorkspaceFilesResult {
   const activeBackend = snapshot.active.backend;
   const isCloud = activeBackend.kind === "cloud";
 
-  const local = useLocalWorkspaceFiles(!isCloud);
-  const cloud = useCloudWorkspaceFiles(isCloud);
+  const local = useLocalWorkspaceFiles(!isCloud, activeBackend);
+  const cloud = useCloudWorkspaceFiles(isCloud, activeBackend);
 
   return isCloud ? cloud : local;
 }

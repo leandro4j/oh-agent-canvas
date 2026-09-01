@@ -8,6 +8,7 @@ import type {
   GitCommitsPage,
 } from "../open-hands.types";
 import { getActiveBackend } from "../backend-registry/active-store";
+import { isSandboxBackend } from "../backend-registry/capabilities";
 import { callCloudProxy } from "../cloud/proxy";
 import { getAgentServerClientOptions } from "../agent-server-client-options";
 import { isSdkHttpStatusError } from "../agent-server-compatibility";
@@ -57,7 +58,7 @@ function toAbsoluteRuntimePath(path: string): string {
 }
 
 function toDirectRuntimePath(path: string): string {
-  return getActiveBackend().backend.kind === "sandbox"
+  return isSandboxBackend(getActiveBackend().backend)
     ? toAbsoluteRuntimePath(path)
     : path;
 }

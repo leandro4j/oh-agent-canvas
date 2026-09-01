@@ -6,6 +6,10 @@ import {
   getRegisteredBackends,
 } from "../backend-registry/active-store";
 import {
+  isSandboxBackend,
+  usesControlPlane,
+} from "../backend-registry/capabilities";
+import {
   getCredentialValidationForServer,
   type CredentialValidation,
 } from "#/utils/mcp-credential-validation";
@@ -123,7 +127,7 @@ function finalizeMcpTestResponse(
 
 function getMcpProbeOptions(): { host: string; apiKey?: string } {
   const active = getActiveBackend().backend;
-  if (active.kind === "sandbox") {
+  if (isSandboxBackend(active)) {
     throw new Error(
       "OAuth authorization requires a running Sandbox conversation.",
     );
@@ -195,7 +199,7 @@ class McpService {
     // is configured.")` and block the install flow entirely. Short-circuit
     // with a synthetic success so saving proceeds; any real connection
     // failure surfaces inside the conversation runtime instead.
-    if (["cloud", "sandbox"].includes(getActiveBackend().backend.kind)) {
+    if (usesControlPlane(getActiveBackend().backend)) {
       return { ok: true, tools: [] };
     }
     const validation = getCredentialValidationForServer(server);

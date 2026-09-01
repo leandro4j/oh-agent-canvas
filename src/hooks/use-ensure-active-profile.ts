@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useActiveBackend } from "#/contexts/active-backend-context";
 import { useLlmProfiles } from "#/hooks/query/use-llm-profiles";
 import { useActivateLlmProfile } from "#/hooks/mutation/use-activate-llm-profile";
+import { usesDirectRuntime } from "#/api/backend-registry/capabilities";
 
 /**
  * Local-mode UX policy: keep an LLM profile active whenever at least one
@@ -17,8 +18,7 @@ import { useActivateLlmProfile } from "#/hooks/mutation/use-activate-llm-profile
  */
 export function useEnsureActiveProfile(): void {
   const { backend } = useActiveBackend();
-  const isProfileBackend =
-    backend.kind === "local" || backend.kind === "sandbox";
+  const isProfileBackend = usesDirectRuntime(backend);
   const { data: profilesData } = useLlmProfiles();
   const { mutate: activate, isPending } = useActivateLlmProfile();
 

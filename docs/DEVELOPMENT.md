@@ -31,9 +31,10 @@ The published `agent-canvas` binary also supports partial-stack modes when you w
 ```sh
 agent-canvas --frontend-only
 agent-canvas --backend-only
+agent-canvas --sandbox
 ```
 
-Both modes still start the ingress proxy; the proxy only routes to the services started by that mode.
+These modes still start the ingress proxy; `--sandbox` is the explicit frontend-only mode for a Sandbox Server deployment and never starts bundled local backends.
 
 The dev stack uses `uvx` to run a temporary `agent-server`
 installation on `127.0.0.1:18000` and points the frontend at it. It isolates

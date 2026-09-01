@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
 
 import { readCloudConversationFile } from "#/api/cloud/conversation-service.api";
 import AgentServerRuntimeService from "#/api/runtime-service/agent-server-runtime-service";
@@ -11,6 +12,10 @@ import {
   useWorkspaceSession,
 } from "#/hooks/query/use-workspace-session";
 import { useWorkspaceMutationCounter } from "#/stores/use-workspace-mutation-counter";
+import {
+  isCloudBackend,
+  isSandboxBackend,
+} from "#/api/backend-registry/capabilities";
 
 // Magic-number sniff for common binary formats we can render via iframe.
 const IMAGE_EXTENSIONS = new Set([
@@ -45,6 +50,11 @@ export interface WorkspaceFileContent {
   staticUrl: string;
   /** MIME type guessed from the file extension. */
   mimeType: string;
+}
+
+interface CachedWorkspaceFileContent extends WorkspaceFileContent {
+  /** Bytes cached by React Query; each mounted consumer owns its Blob URL. */
+  previewBlob?: Blob;
 }
 
 function getExtension(path: string): string {
@@ -160,9 +170,9 @@ export function useWorkspaceFileContent(relativePath: string | null) {
   const selectedRepository = conversation?.selected_repository;
   const workingDir = conversation?.workspace?.working_dir?.trim();
   const baseUrl = workspaceSession?.baseUrl;
-  const backendKind = getActiveBackend().backend.kind;
-  const isCloud = backendKind === "cloud";
-  const isSandbox = backendKind === "sandbox";
+  const activeBackend = getActiveBackend().backend;
+  const isCloud = isCloudBackend(activeBackend);
+  const isSandbox = isSandboxBackend(activeBackend);
 
   // The cloud `/file` endpoint downloads via the runtime's
   // `/api/file/download`, which rejects relative paths (400 → the cloud API
@@ -175,7 +185,7 @@ export function useWorkspaceFileContent(relativePath: string | null) {
     ? `${workspaceRoot}/${relativePath}`
     : null;
 
-  return useQuery<WorkspaceFileContent>({
+  const query = useQuery<CachedWorkspaceFileContent>({
     queryKey: [
       "workspace-file-content",
       conversationId,
@@ -261,8 +271,9 @@ export function useWorkspaceFileContent(relativePath: string | null) {
             path: relativePath,
             kind: "text",
             text,
-            staticUrl: `data:${mimeType};charset=utf-8;base64,${arrayBufferToBase64(buffer)}`,
+            staticUrl: "",
             mimeType,
+            previewBlob: new Blob([buffer], { type: mimeType }),
           };
         }
 
@@ -272,8 +283,9 @@ export function useWorkspaceFileContent(relativePath: string | null) {
           path: relativePath,
           kind: kind === "text" ? "binary" : kind,
           text: null,
-          staticUrl: `data:${binaryMimeType};base64,${arrayBufferToBase64(buffer)}`,
+          staticUrl: "",
           mimeType: binaryMimeType,
+          previewBlob: new Blob([buffer], { type: binaryMimeType }),
         };
       }
 
@@ -342,4 +354,29 @@ export function useWorkspaceFileContent(relativePath: string | null) {
     gcTime: 1000 * 60,
     meta: { disableToast: true },
   });
+
+  const previewBlob = query.data?.previewBlob;
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!previewBlob) {
+      setPreviewUrl(null);
+      return undefined;
+    }
+
+    const url = URL.createObjectURL(previewBlob);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [previewBlob]);
+
+  const data = useMemo<WorkspaceFileContent | undefined>(() => {
+    if (!query.data) return undefined;
+    const { previewBlob: ownedBlob, ...content } = query.data;
+    return {
+      ...content,
+      staticUrl: ownedBlob ? (previewUrl ?? "") : content.staticUrl,
+    };
+  }, [previewUrl, query.data]);
+
+  return Object.assign({}, query, { data });
 }

@@ -81,21 +81,16 @@ export async function searchSandboxConversations(
   backend?: Backend,
 ): Promise<AppConversationPage> {
   const data = await withSandboxControlPlaneClient(
-    (client) =>
-      client.get<{
-        items?: AppConversation[];
-        next_page_id?: string | null;
-      }>("/app-conversations/search", {
-        params: {
-          limit,
-          ...(pageId ? { page_id: pageId } : {}),
-          include_sub_conversations: false,
-        },
-      }),
+    (client) => client.searchConversations(limit, pageId),
     backend,
   );
 
-  return normalizeConversationPage(data ?? {});
+  return normalizeConversationPage(
+    (data ?? {}) as unknown as {
+      items?: AppConversation[];
+      next_page_id?: string | null;
+    },
+  );
 }
 
 export async function batchGetSandboxConversations(
@@ -105,16 +100,14 @@ export async function batchGetSandboxConversations(
   if (ids.length === 0) return [];
 
   const data = await withSandboxControlPlaneClient(
-    (client) =>
-      client.get<(AppConversation | null)[]>("/app-conversations", {
-        params: { ids },
-      }),
+    (client) => client.getConversations(ids),
     backend,
   );
 
-  return (data ?? []).map((conversation) =>
-    conversation ? normalizeSandboxConversation(conversation) : null,
-  );
+  return (data ?? []).map((item) => {
+    const conversation = item as unknown as AppConversation | null;
+    return conversation ? normalizeSandboxConversation(conversation) : null;
+  });
 }
 
 export async function createSandboxConversation(
@@ -122,8 +115,10 @@ export async function createSandboxConversation(
   backend?: Backend,
 ): Promise<AppConversationStartTask> {
   return withSandboxControlPlaneClient(
-    (client) =>
-      client.post<AppConversationStartTask>("/app-conversations", request),
+    async (client) =>
+      (await client.createConversation(
+        request,
+      )) as unknown as AppConversationStartTask,
     backend,
   );
 }
@@ -132,15 +127,13 @@ export async function getSandboxConversationStartTask(
   taskId: string,
   backend?: Backend,
 ): Promise<AppConversationStartTask | null> {
-  const data = await withSandboxControlPlaneClient(
-    (client) =>
-      client.get<(AppConversationStartTask | null)[]>(
-        "/app-conversations/start-tasks",
-        { params: { ids: [taskId] } },
-      ),
+  return withSandboxControlPlaneClient(
+    async (client) =>
+      (await client.getConversationStartTask(
+        taskId,
+      )) as unknown as AppConversationStartTask | null,
     backend,
   );
-  return data?.[0] ?? null;
 }
 
 export async function updateSandboxConversationTitle(
@@ -150,10 +143,11 @@ export async function updateSandboxConversationTitle(
 ): Promise<AppConversation> {
   const data = await withSandboxControlPlaneClient(
     (client) =>
-      client.patch<AppConversation>(
-        `/app-conversations/${encodeURIComponent(conversationId)}`,
-        { title },
-      ),
+      client.request<AppConversation>({
+        method: "PATCH",
+        path: `/api/v1/app-conversations/${encodeURIComponent(conversationId)}`,
+        body: { title },
+      }),
     backend,
   );
   return normalizeSandboxConversation(data);
@@ -164,8 +158,7 @@ export async function deleteSandboxConversation(
   backend?: Backend,
 ): Promise<void> {
   await withSandboxControlPlaneClient(
-    (client) =>
-      client.delete(`/app-conversations/${encodeURIComponent(conversationId)}`),
+    (client) => client.deleteConversation(conversationId),
     backend,
   );
 }
@@ -175,11 +168,7 @@ export async function downloadSandboxConversation(
   backend?: Backend,
 ): Promise<Blob> {
   return withSandboxControlPlaneClient(
-    (client) =>
-      client.get<Blob>(
-        `/app-conversations/${encodeURIComponent(conversationId)}/download`,
-        { responseType: "blob" },
-      ),
+    (client) => client.downloadConversation(conversationId),
     backend,
   );
 }
@@ -189,8 +178,7 @@ export async function pauseSandbox(
   backend?: Backend,
 ): Promise<void> {
   await withSandboxControlPlaneClient(
-    (client) =>
-      client.post(`/sandboxes/${encodeURIComponent(sandboxId)}/pause`),
+    (client) => client.pauseSandbox(sandboxId),
     backend,
   );
 }
@@ -200,8 +188,7 @@ export async function resumeSandbox(
   backend?: Backend,
 ): Promise<void> {
   await withSandboxControlPlaneClient(
-    (client) =>
-      client.post(`/sandboxes/${encodeURIComponent(sandboxId)}/resume`),
+    (client) => client.resumeSandbox(sandboxId),
     backend,
   );
 }
@@ -217,22 +204,21 @@ export async function searchSandboxConversationEvents(
 ): Promise<EventSearchPage<OpenHandsEvent>> {
   const data = await withSandboxControlPlaneClient(
     (client) =>
-      client.get<EventSearchPage<OpenHandsEvent>>(
-        `/conversation/${encodeURIComponent(conversationId)}/events/search`,
-        {
-          params: {
-            limit: options.limit ?? 100,
-            ...(options.pageId ? { page_id: options.pageId } : {}),
-            ...(options.sortOrder ? { sort_order: options.sortOrder } : {}),
-            ...(options.timestampGte
-              ? { timestamp__gte: options.timestampGte }
-              : {}),
-            ...(options.timestampLt
-              ? { timestamp__lt: options.timestampLt }
-              : {}),
-          },
+      client.request<EventSearchPage<OpenHandsEvent>>({
+        method: "GET",
+        path: `/api/v1/conversation/${encodeURIComponent(conversationId)}/events/search`,
+        params: {
+          limit: options.limit ?? 100,
+          ...(options.pageId ? { page_id: options.pageId } : {}),
+          ...(options.sortOrder ? { sort_order: options.sortOrder } : {}),
+          ...(options.timestampGte
+            ? { timestamp__gte: options.timestampGte }
+            : {}),
+          ...(options.timestampLt
+            ? { timestamp__lt: options.timestampLt }
+            : {}),
         },
-      ),
+      }),
     backend,
   );
 
@@ -248,9 +234,10 @@ export async function getSandboxConversationEventCount(
 ): Promise<number> {
   return withSandboxControlPlaneClient(
     (client) =>
-      client.get<number>(
-        `/conversation/${encodeURIComponent(conversationId)}/events/count`,
-      ),
+      client.request<number>({
+        method: "GET",
+        path: `/api/v1/conversation/${encodeURIComponent(conversationId)}/events/count`,
+      }),
     backend,
   );
 }

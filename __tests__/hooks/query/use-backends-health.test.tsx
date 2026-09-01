@@ -27,14 +27,23 @@ const getCurrentCloudApiKeyMock = vi.fn();
 const getCloudOrganizationsMock = vi.fn();
 const fetchMock = vi.hoisted(() => vi.fn<typeof fetch>());
 
-vi.mock("@openhands/typescript-client/clients", () => ({
-  ServerClient: vi.fn(function ServerClientMock() {
-    return { getServerInfo: getServerInfoMock };
-  }),
-  SettingsClient: vi.fn(function SettingsClientMock() {
-    return { getSettings: getSettingsMock };
-  }),
-}));
+vi.mock("@openhands/typescript-client/clients", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@openhands/typescript-client/clients")
+    >();
+  return {
+    ...actual,
+    ServerClient: vi.fn(function ServerClientMock(options: { host: string }) {
+      return options.host === "https://sandbox.example.test"
+        ? new actual.ServerClient(options)
+        : { getServerInfo: getServerInfoMock };
+    }),
+    SettingsClient: vi.fn(function SettingsClientMock() {
+      return { getSettings: getSettingsMock };
+    }),
+  };
+});
 
 vi.mock("#/api/cloud/organization-service.api", () => ({
   getCloudOrganizations: (...args: unknown[]) =>
@@ -225,7 +234,9 @@ describe("useBackendsHealth", () => {
       2,
       "https://sandbox.example.test/api/v1/settings",
       expect.objectContaining({
-        headers: { "X-Session-API-Key": "control-plane-key" },
+        headers: expect.objectContaining({
+          "X-Session-API-Key": "control-plane-key",
+        }),
       }),
     );
     expect(getCurrentCloudApiKeyMock).not.toHaveBeenCalled();

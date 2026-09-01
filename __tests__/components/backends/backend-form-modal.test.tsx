@@ -19,18 +19,25 @@ const getServerInfoMock = vi.hoisted(() => vi.fn());
 const getSettingsMock = vi.hoisted(() => vi.fn().mockResolvedValue({}));
 const fetchMock = vi.hoisted(() => vi.fn<typeof fetch>());
 
-vi.mock("@openhands/typescript-client/clients", () => ({
-  ServerClient: vi.fn(function ServerClientMock() {
-    return {
-      getServerInfo: getServerInfoMock,
-    };
-  }),
-  SettingsClient: vi.fn(function SettingsClientMock() {
-    return {
-      getSettings: getSettingsMock,
-    };
-  }),
-}));
+vi.mock("@openhands/typescript-client/clients", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@openhands/typescript-client/clients")
+    >();
+  return {
+    ...actual,
+    ServerClient: vi.fn(function ServerClientMock(options: { host: string }) {
+      return options.host.includes("sandbox.example.test")
+        ? new actual.ServerClient(options)
+        : { getServerInfo: getServerInfoMock };
+    }),
+    SettingsClient: vi.fn(function SettingsClientMock() {
+      return {
+        getSettings: getSettingsMock,
+      };
+    }),
+  };
+});
 
 function renderWithProviders(
   ui: React.ReactElement,
@@ -354,7 +361,9 @@ describe("BackendFormModal – edit mode (BackendForm entry point)", () => {
       2,
       "https://sandbox.example.test/api/v1/settings",
       expect.objectContaining({
-        headers: { "X-Session-API-Key": "control-key" },
+        headers: expect.objectContaining({
+          "X-Session-API-Key": "control-key",
+        }),
       }),
     );
   });

@@ -40,6 +40,7 @@ import {
   resetPersistedSessionApiKeyCache,
 } from "../../scripts/dev-safe.mjs";
 import { createRouter } from "../../scripts/proxy-utils.mjs";
+import { parseAgentCanvasMode } from "../../bin/agent-canvas-options.mjs";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -511,6 +512,17 @@ describe("stack mode routing", () => {
       `http://localhost:${config.vitePort}`,
     );
     expect(buildRouteArgs(getLocalServiceRoutes(config))).toEqual([]);
+  });
+
+  it("never launches bundled backends in explicit Sandbox mode", async () => {
+    const config = await buildConfig(
+      parseAgentCanvasMode(["--sandbox"]),
+      envWithIsolatedKeyPath(),
+    );
+
+    expect(config.launchFrontend).toBe(true);
+    expect(config.launchAgentServer).toBe(false);
+    expect(config.launchAutomation).toBe(false);
   });
 
   it("does not bake a host workspace path in frontend-only mode by default", async () => {

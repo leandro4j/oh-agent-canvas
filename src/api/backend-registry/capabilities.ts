@@ -49,3 +49,21 @@ export function usesManagedCloud(backend: BackendKindInput): boolean {
 export function usesDirectRuntime(backend: BackendKindInput): boolean {
   return getBackendCapabilities(backend).usesDirectRuntime;
 }
+
+export function isLocalBackend(backend: BackendKindInput): boolean {
+  const capabilities = getBackendCapabilities(backend);
+  return capabilities.usesDirectRuntime && !capabilities.usesControlPlane;
+}
+
+export function isCloudBackend(backend: BackendKindInput): boolean {
+  return getBackendCapabilities(backend).usesManagedCloud;
+}
+
+export function isSandboxBackend(backend: BackendKindInput): boolean {
+  const capabilities = getBackendCapabilities(backend);
+  return (
+    capabilities.usesControlPlane &&
+    capabilities.usesDirectRuntime &&
+    !capabilities.usesManagedCloud
+  );
+}

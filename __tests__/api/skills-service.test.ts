@@ -26,7 +26,10 @@ const { mockGetSkills, MOCK_PUBLIC_CATALOG } = vi.hoisted(() => ({
   ],
 }));
 
-vi.mock("@openhands/typescript-client/clients", () => ({
+vi.mock("@openhands/typescript-client/clients", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@openhands/typescript-client/clients")
+  >()),
   SkillsClient: vi.fn(function SkillsClientMock() {
     return { getSkills: mockGetSkills };
   }),

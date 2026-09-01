@@ -1,33 +1,13 @@
+import { ServerClient } from "@openhands/typescript-client/clients";
 import type { Backend } from "../backend-registry/types";
+import { isSdkHttpStatusError } from "../agent-server-compatibility";
+import { createSandboxControlPlaneClient } from "./sandbox-client.api";
 
 export const SANDBOX_HEALTH_PATH = "/health";
 export const SANDBOX_SETTINGS_PATH = "/api/v1/settings";
 export const SANDBOX_SERVER_UNREACHABLE_ERROR = "Sandbox Server unreachable";
 export const INVALID_SANDBOX_BACKEND_API_KEY_ERROR =
   "Invalid Sandbox Server API key";
-
-function buildSandboxUrl(host: string, path: string): string {
-  return `${host.replace(/\/+$/, "")}${path}`;
-}
-
-async function getSandboxEndpoint(
-  url: string,
-  timeoutMs: number,
-  headers?: Record<string, string>,
-): Promise<Response> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(url, {
-      method: "GET",
-      ...(headers ? { headers } : {}),
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
 
 function unavailableError(cause?: unknown): Error {
   return new Error(SANDBOX_SERVER_UNREACHABLE_ERROR, { cause });
@@ -42,36 +22,36 @@ export async function validateSandboxBackend(
   backend: Readonly<Pick<Backend, "host" | "apiKey">>,
   timeoutMs: number,
 ): Promise<void> {
-  let healthResponse: Response;
+  const healthClient = new ServerClient({
+    host: backend.host,
+    timeout: timeoutMs,
+  });
   try {
-    healthResponse = await getSandboxEndpoint(
-      buildSandboxUrl(backend.host, SANDBOX_HEALTH_PATH),
-      timeoutMs,
-    );
+    await healthClient.getHealth();
   } catch (error) {
     throw unavailableError(error);
+  } finally {
+    healthClient.close();
   }
 
-  if (!healthResponse.ok) {
-    throw unavailableError();
-  }
-
-  let settingsResponse: Response;
+  const settingsClient = createSandboxControlPlaneClient(
+    {
+      id: "sandbox-validation",
+      name: "Sandbox",
+      host: backend.host,
+      apiKey: backend.apiKey,
+      kind: "sandbox",
+    },
+    timeoutMs,
+  );
   try {
-    settingsResponse = await getSandboxEndpoint(
-      buildSandboxUrl(backend.host, SANDBOX_SETTINGS_PATH),
-      timeoutMs,
-      { "X-Session-API-Key": backend.apiKey },
-    );
+    await settingsClient.getSettings();
   } catch (error) {
+    if (isSdkHttpStatusError(error, 401) || isSdkHttpStatusError(error, 403)) {
+      throw new Error(INVALID_SANDBOX_BACKEND_API_KEY_ERROR);
+    }
     throw unavailableError(error);
-  }
-
-  if (settingsResponse.status === 401 || settingsResponse.status === 403) {
-    throw new Error(INVALID_SANDBOX_BACKEND_API_KEY_ERROR);
-  }
-
-  if (!settingsResponse.ok) {
-    throw unavailableError();
+  } finally {
+    settingsClient.close();
   }
 }

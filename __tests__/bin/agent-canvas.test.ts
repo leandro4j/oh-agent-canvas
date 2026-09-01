@@ -42,6 +42,7 @@ describe("agent-canvas CLI", () => {
     expect(stdout).toContain("@openhands/agent-canvas");
     expect(stdout).toContain("USAGE:");
     expect(stdout).toContain("--frontend-only");
+    expect(stdout).toContain("--sandbox");
     expect(stdout).toContain("--backend-only");
     expect(stdout).toContain("--help");
   });
@@ -57,6 +58,10 @@ describe("agent-canvas CLI", () => {
       copyFileSync(
         resolve(repoRoot, "bin", "agent-canvas.mjs"),
         resolve(tempRoot, "bin", "agent-canvas.mjs"),
+      );
+      copyFileSync(
+        resolve(repoRoot, "bin", "agent-canvas-options.mjs"),
+        resolve(tempRoot, "bin", "agent-canvas-options.mjs"),
       );
       symlinkSync(
         resolve(repoRoot, "scripts"),

@@ -68,6 +68,7 @@ vi.mock("#/api/agent-server-compatibility", () => ({
 
 vi.mock("#/api/backend-registry/active-store", () => ({
   getEffectiveLocalBackend: mockGetEffectiveLocalBackend,
+  getEffectiveDirectRuntimeBackend: mockGetEffectiveLocalBackend,
 }));
 
 beforeEach(() => {

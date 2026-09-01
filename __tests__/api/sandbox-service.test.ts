@@ -41,7 +41,9 @@ describe("validateSandboxBackend", () => {
       "https://sandbox.example.test/api/v1/settings",
       expect.objectContaining({
         method: "GET",
-        headers: { "X-Session-API-Key": "control-plane-key" },
+        headers: expect.objectContaining({
+          "X-Session-API-Key": "control-plane-key",
+        }),
       }),
     );
   });

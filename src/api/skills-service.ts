@@ -10,12 +10,10 @@ import { fetchCloudSkills } from "./cloud/skills-service.api";
 import { getAgentServerClientOptions } from "./agent-server-client-options";
 import { withSandboxControlPlaneClient } from "./sandbox/sandbox-client.api";
 
-const SANDBOX_SKILLS_PAGE_LIMIT = 100;
-
 function normalizeSandboxSkill(item: {
   name: string;
   type: string;
-  source: string;
+  source?: string | null;
   triggers?: string[] | null;
 }): SkillInfo {
   const type =
@@ -25,37 +23,16 @@ function normalizeSandboxSkill(item: {
   return {
     name: item.name,
     type,
-    source: item.source,
+    source: item.source ?? "sandbox",
     triggers: item.triggers ?? undefined,
   };
 }
 
 async function fetchSandboxSkills(): Promise<SkillInfo[]> {
-  const skills: SkillInfo[] = [];
-  let pageId: string | undefined;
-
-  do {
-    const page = await withSandboxControlPlaneClient((client) =>
-      client.get<{
-        items?: Array<{
-          name: string;
-          type: string;
-          source: string;
-          triggers?: string[] | null;
-        }>;
-        next_page_id?: string | null;
-      }>("/skills/search", {
-        params: {
-          limit: SANDBOX_SKILLS_PAGE_LIMIT,
-          ...(pageId ? { page_id: pageId } : {}),
-        },
-      }),
-    );
-    skills.push(...(page?.items ?? []).map(normalizeSandboxSkill));
-    pageId = page?.next_page_id ?? undefined;
-  } while (pageId);
-
-  return skills;
+  const skills = await withSandboxControlPlaneClient((client) =>
+    client.listSkills(),
+  );
+  return skills.map(normalizeSandboxSkill);
 }
 
 function catalogEntryToSkillInfo(entry: SkillCatalogEntry): SkillInfo {

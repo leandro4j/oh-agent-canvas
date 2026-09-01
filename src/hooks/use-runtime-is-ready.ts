@@ -10,6 +10,7 @@ import {
 } from "#/api/backend-registry/active-store";
 import { useActiveConversation } from "./query/use-active-conversation";
 import { isExecutionActive } from "#/utils/status";
+import { usesControlPlane } from "#/api/backend-registry/capabilities";
 
 interface UseRuntimeIsReadyOptions {
   allowAgentError?: boolean;
@@ -29,8 +30,7 @@ export const useRuntimeIsReady = ({
     ? RUNTIME_STARTING_STATES
     : RUNTIME_INACTIVE_STATES;
   const usesManagedRuntime =
-    snapshot.active.backend.kind === "cloud" ||
-    snapshot.active.backend.kind === "sandbox" ||
+    usesControlPlane(snapshot.active.backend) ||
     conversation?.sandbox_status != null;
   const hasRuntime =
     !usesManagedRuntime ||

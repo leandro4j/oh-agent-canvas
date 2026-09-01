@@ -11,6 +11,8 @@ import {
 import { useNavigation } from "#/context/navigation-context";
 import { useActiveConversation } from "#/hooks/query/use-active-conversation";
 import { useTracking } from "#/hooks/use-tracking";
+import { getActiveBackend } from "#/api/backend-registry/active-store";
+import { isSandboxBackend } from "#/api/backend-registry/capabilities";
 
 export const useNewConversationCommand = () => {
   const queryClient = useQueryClient();
@@ -25,13 +27,12 @@ export const useNewConversationCommand = () => {
         throw new Error("No active conversation");
       }
 
-      // /new reuses the parent conversation's sandbox (matches OpenHands
-      // cloud behavior); it is NOT a sub-conversation, so parent_conversation_id
-      // and agent_type stay undefined.
+      // Cloud /new reuses the parent runtime. Sandbox Server's no-grouping
+      // contract requires every app conversation to provision a fresh sandbox.
       const startTask = await AgentServerConversationService.createConversation(
-        {
-          sandboxId: conversation.sandbox_id ?? undefined,
-        },
+        isSandboxBackend(getActiveBackend().backend)
+          ? {}
+          : { sandboxId: conversation.sandbox_id ?? undefined },
       );
 
       if (startTask.status === "ERROR") {
