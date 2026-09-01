@@ -1,14 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
 import LLMSubscriptionService from "#/api/llm-subscription-service";
+import { supportsBackendFeature } from "#/api/backend-registry/capabilities";
 import { LLM_SUBSCRIPTION_QUERY_KEYS } from "#/hooks/query/query-keys";
+import { useActiveBackend } from "#/contexts/active-backend-context";
 
 export function useOpenAISubscriptionStatus({
   enabled = true,
 }: { enabled?: boolean } = {}) {
+  const { backend } = useActiveBackend();
+
   return useQuery({
     queryKey: LLM_SUBSCRIPTION_QUERY_KEYS.openaiStatus,
     queryFn: LLMSubscriptionService.getOpenAIStatus,
-    enabled,
+    enabled: enabled && supportsBackendFeature(backend, "llmSubscriptionAuth"),
     retry: false,
     refetchOnWindowFocus: false,
     staleTime: 1000 * 60 * 5,

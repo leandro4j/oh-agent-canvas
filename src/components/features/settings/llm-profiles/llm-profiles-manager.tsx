@@ -15,6 +15,7 @@ import { useActivateLlmProfile } from "#/hooks/mutation/use-activate-llm-profile
 import { useSaveLlmProfile } from "#/hooks/mutation/use-save-llm-profile";
 import { useCanManageOrgProfiles } from "#/hooks/use-can-manage-org-profiles";
 import { useActiveBackend } from "#/contexts/active-backend-context";
+import { supportsBackendFeature } from "#/api/backend-registry/capabilities";
 import {
   displayErrorToast,
   displaySuccessToast,
@@ -40,6 +41,7 @@ export function LlmProfilesManager({
   // Provider connections exist only on the local agent-server.
   const { backend } = useActiveBackend();
   const isLocal = backend.kind === "local";
+  const canDuplicate = supportsBackendFeature(backend, "llmProfileDuplication");
   const {
     data: connections,
     isLoading: isLoadingConnections,
@@ -145,6 +147,7 @@ export function LlmProfilesManager({
             profiles={profiles}
             active={active}
             canManage={canManage}
+            canDuplicate={canDuplicate}
             connectionNamesById={connectionNamesById}
             onActivate={handleActivate}
             onEdit={handleEdit}

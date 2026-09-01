@@ -22,6 +22,13 @@ const cloudBackend: Backend = {
   kind: "cloud",
 };
 
+const sandboxBackend: Backend = {
+  ...cloudBackend,
+  id: "sandbox-1",
+  name: "Sandbox",
+  kind: "sandbox",
+};
+
 function renderExtensionsNavigation(ui: ReactNode) {
   return render(
     <QueryClientProvider
@@ -153,6 +160,21 @@ describe("ExtensionsNavigation", () => {
       expect(mcpItem).not.toHaveAttribute("target");
       expect(mcpItem).toHaveAttribute("href", "/mcp");
     });
+  });
+
+  it("hides unsupported Plugins and Extensions items for Sandbox", () => {
+    setRegisteredBackends([sandboxBackend]);
+    setActiveSelection({ backendId: sandboxBackend.id });
+
+    renderExtensionsNavigation(<ExtensionsNavigation />);
+
+    const nav = screen.getByTestId("extensions-navbar-desktop");
+    expect(
+      within(nav).queryByTestId("sidebar-extensions-/plugins"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(nav).queryByTestId("sidebar-extensions-/extensions"),
+    ).not.toBeInTheDocument();
   });
 
   // Regression: the nav used to suppress itself at iPad-portrait widths

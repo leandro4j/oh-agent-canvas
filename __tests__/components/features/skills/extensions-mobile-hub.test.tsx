@@ -20,6 +20,13 @@ const cloudBackend: Backend = {
   kind: "cloud",
 };
 
+const sandboxBackend: Backend = {
+  ...cloudBackend,
+  id: "sandbox-1",
+  name: "Sandbox",
+  kind: "sandbox",
+};
+
 function renderMobileHub(ui: ReactNode) {
   return render(
     <QueryClientProvider
@@ -85,5 +92,20 @@ describe("ExtensionsMobileHub", () => {
         within(hub).queryByTestId("sidebar-extensions-/plugins"),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("hides unsupported Plugins and Extensions items for Sandbox", () => {
+    setRegisteredBackends([sandboxBackend]);
+    setActiveSelection({ backendId: sandboxBackend.id });
+
+    renderMobileHub(<ExtensionsMobileHub />);
+
+    const hub = screen.getByTestId("extensions-mobile-hub");
+    expect(
+      within(hub).queryByTestId("sidebar-extensions-/plugins"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(hub).queryByTestId("sidebar-extensions-/extensions"),
+    ).not.toBeInTheDocument();
   });
 });

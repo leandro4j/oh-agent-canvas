@@ -23,6 +23,7 @@ import { NavigationLink } from "#/components/shared/navigation-link";
 import { useLlmProfiles } from "#/hooks/query/use-llm-profiles";
 import { useActiveBackend } from "#/contexts/active-backend-context";
 import { formatModelNameForDisplay } from "#/utils/format-model-name";
+import { supportsBackendFeature } from "#/api/backend-registry/capabilities";
 
 const AUTOMATIC_TITLE_LLM_PROFILE_KEY = "__automatic__";
 
@@ -33,6 +34,10 @@ export function AppSettingsScreen() {
   const { data: settings, isLoading } = useSettings();
   const activeBackend = useActiveBackend();
   const isCloudBackend = activeBackend.backend.kind === "cloud";
+  const supportsTelemetry = supportsBackendFeature(
+    activeBackend.backend,
+    "telemetry",
+  );
   const { data: llmProfiles, isLoading: areLlmProfilesLoading } =
     useLlmProfiles();
 
@@ -91,7 +96,8 @@ export function AppSettingsScreen() {
 
     const enableAnalytics = isCloudBackend
       ? true
-      : formData.get("enable-analytics-switch")?.toString() === "on";
+      : supportsTelemetry &&
+        formData.get("enable-analytics-switch")?.toString() === "on";
     const enableSoundNotifications =
       formData.get("enable-sound-notifications-switch")?.toString() === "on";
 
@@ -105,7 +111,10 @@ export function AppSettingsScreen() {
     saveSettings(
       {
         language,
-        ...(!isCloudBackend && { user_consents_to_analytics: enableAnalytics }),
+        ...(!isCloudBackend &&
+          supportsTelemetry && {
+            user_consents_to_analytics: enableAnalytics,
+          }),
         enable_sound_notifications: enableSoundNotifications,
         git_user_name: gitUserName,
         git_user_email: gitUserEmail,
@@ -113,7 +122,9 @@ export function AppSettingsScreen() {
       },
       {
         onSuccess: () => {
-          void setTelemetryConsent(enableAnalytics ? "granted" : "denied");
+          if (supportsTelemetry) {
+            void setTelemetryConsent(enableAnalytics ? "granted" : "denied");
+          }
           displaySuccessToast(t(I18nKey.SETTINGS$SAVED));
         },
         onError: (error) => {
@@ -194,22 +205,24 @@ export function AppSettingsScreen() {
 
           <ThemeInput />
 
-          <SettingsSwitch
-            testId="enable-analytics-switch"
-            name={isCloudBackend ? undefined : "enable-analytics-switch"}
-            defaultIsToggled={
-              isCloudBackend
-                ? true
-                : (settings.user_consents_to_analytics ?? true)
-            }
-            isToggled={isCloudBackend ? true : undefined}
-            isDisabled={isCloudBackend}
-            onToggle={
-              isCloudBackend ? undefined : checkIfAnalyticsSwitchHasChanged
-            }
-          >
-            {t(I18nKey.ANALYTICS$SEND_ANONYMOUS_DATA)}
-          </SettingsSwitch>
+          {supportsTelemetry ? (
+            <SettingsSwitch
+              testId="enable-analytics-switch"
+              name={isCloudBackend ? undefined : "enable-analytics-switch"}
+              defaultIsToggled={
+                isCloudBackend
+                  ? true
+                  : (settings.user_consents_to_analytics ?? true)
+              }
+              isToggled={isCloudBackend ? true : undefined}
+              isDisabled={isCloudBackend}
+              onToggle={
+                isCloudBackend ? undefined : checkIfAnalyticsSwitchHasChanged
+              }
+            >
+              {t(I18nKey.ANALYTICS$SEND_ANONYMOUS_DATA)}
+            </SettingsSwitch>
+          ) : null}
 
           <SettingsSwitch
             testId="enable-sound-notifications-switch"

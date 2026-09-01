@@ -8,6 +8,7 @@ import {
   subscribeTelemetryConsent,
 } from "#/services/telemetry";
 import { useSettings } from "./query/use-settings";
+import { supportsBackendFeature } from "#/api/backend-registry/capabilities";
 
 /**
  * Hook to sync PostHog opt-in/out state with the backend setting.
@@ -44,6 +45,7 @@ export const useSyncTelemetryConsent = () => {
 
   React.useEffect(() => {
     if (settings === undefined) return;
+    if (!supportsBackendFeature(backend, "telemetry")) return;
 
     if (pendingBrowserConsent !== null) {
       const backendConsent =

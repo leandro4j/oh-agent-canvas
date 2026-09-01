@@ -17,6 +17,8 @@ interface ProfilesBodyProps {
   active: string | null;
   /** When false, rows render read-only (no actions menu) — cloud members. */
   canManage: boolean;
+  /** Sandbox cannot clone a server-owned redacted credential. */
+  canDuplicate: boolean;
   /**
    * Display name per provider-connection id. When non-empty, profiles are
    * grouped under their connection's name so models sharing a provider are
@@ -85,6 +87,7 @@ export function ProfilesBody({
   profiles,
   active,
   canManage,
+  canDuplicate,
   connectionNamesById = {},
   onActivate,
   onEdit,
@@ -101,6 +104,7 @@ export function ProfilesBody({
       profile={profile}
       isActive={profile.name === active}
       canManage={canManage}
+      canDuplicate={canDuplicate}
       onActivate={onActivate}
       onEdit={onEdit}
       onRename={onRename}

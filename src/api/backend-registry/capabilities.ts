@@ -4,7 +4,43 @@ export interface BackendCapabilities {
   readonly usesControlPlane: boolean;
   readonly usesManagedCloud: boolean;
   readonly usesDirectRuntime: boolean;
+  readonly features: Readonly<Record<BackendFeature, boolean>>;
 }
+
+export type BackendFeature =
+  | "agentProfiles"
+  | "canvasExtensions"
+  | "llmProfileDuplication"
+  | "llmSubscriptionAuth"
+  | "plugins"
+  | "telemetry";
+
+const LOCAL_FEATURES = Object.freeze({
+  agentProfiles: true,
+  canvasExtensions: true,
+  llmProfileDuplication: true,
+  llmSubscriptionAuth: true,
+  plugins: true,
+  telemetry: true,
+}) satisfies Readonly<Record<BackendFeature, boolean>>;
+
+const CLOUD_FEATURES = Object.freeze({
+  agentProfiles: true,
+  canvasExtensions: false,
+  llmProfileDuplication: true,
+  llmSubscriptionAuth: false,
+  plugins: false,
+  telemetry: true,
+}) satisfies Readonly<Record<BackendFeature, boolean>>;
+
+const SANDBOX_FEATURES = Object.freeze({
+  agentProfiles: false,
+  canvasExtensions: false,
+  llmProfileDuplication: false,
+  llmSubscriptionAuth: false,
+  plugins: false,
+  telemetry: false,
+}) satisfies Readonly<Record<BackendFeature, boolean>>;
 
 export const BACKEND_CAPABILITIES: Readonly<
   Record<BackendKind, BackendCapabilities>
@@ -13,16 +49,19 @@ export const BACKEND_CAPABILITIES: Readonly<
     usesControlPlane: false,
     usesManagedCloud: false,
     usesDirectRuntime: true,
+    features: LOCAL_FEATURES,
   }),
   cloud: Object.freeze({
     usesControlPlane: true,
     usesManagedCloud: true,
     usesDirectRuntime: false,
+    features: CLOUD_FEATURES,
   }),
   sandbox: Object.freeze({
     usesControlPlane: true,
     usesManagedCloud: false,
     usesDirectRuntime: true,
+    features: SANDBOX_FEATURES,
   }),
 });
 
@@ -66,4 +105,11 @@ export function isSandboxBackend(backend: BackendKindInput): boolean {
     capabilities.usesDirectRuntime &&
     !capabilities.usesManagedCloud
   );
+}
+
+export function supportsBackendFeature(
+  backend: BackendKindInput,
+  feature: BackendFeature,
+): boolean {
+  return getBackendCapabilities(backend).features[feature];
 }

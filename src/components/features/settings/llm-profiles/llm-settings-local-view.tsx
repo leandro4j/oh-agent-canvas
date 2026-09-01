@@ -81,7 +81,8 @@ export function shouldReapplyProfileAfterSave({
 
 /**
  * LlmSettingsLocalView provides an integrated view for managing LLM profiles
- * in local agent-server mode. It supports listing, creating, and editing profiles.
+ * in local agent-server and Sandbox control-plane modes. It supports listing,
+ * creating, and editing profiles.
  *
  * Note: This component manages multiple responsibilities (view state, validation,
  * form coordination, save logic). A future refactoring could extract these into
@@ -455,6 +456,10 @@ export function LlmSettingsLocalView() {
           name: editingProfile.profile.name,
         })
       : t(I18nKey.SETTINGS$PROFILE_SAVE_HINT);
+  const initialProfileModel =
+    backend.kind === "sandbox"
+      ? (settings?.llm_model ?? "")
+      : DEFAULT_SETTINGS.llm_model;
 
   // Create/Edit view: show form with profile name input
   return (
@@ -497,10 +502,10 @@ export function LlmSettingsLocalView() {
           viewMode === "edit" && editingProfile?.initialValues
             ? // Edit mode: use the existing profile values
               editingProfile.initialValues
-            : // Create mode: prefill the model with Canvas' free default,
-              // while keeping secret/base URL fields blank for a fresh profile.
+            : // Create mode: local uses Canvas' default; Sandbox uses the
+              // runtime model returned by its control plane.
               {
-                "llm.model": DEFAULT_SETTINGS.llm_model,
+                "llm.model": initialProfileModel,
                 "llm.api_key": "",
                 "llm.base_url": "",
                 [LLM_PROVIDER_CONNECTION_KEY]: "",

@@ -5,6 +5,7 @@ import {
   isCloudBackend,
   isLocalBackend,
   isSandboxBackend,
+  supportsBackendFeature,
   usesControlPlane,
   usesDirectRuntime,
   usesManagedCloud,
@@ -13,9 +14,9 @@ import type { BackendKind } from "#/api/backend-registry/types";
 
 describe("backend capabilities", () => {
   it.each([
-    ["local", false, false, true],
-    ["cloud", true, true, false],
-    ["sandbox", true, false, true],
+    ["local", false, false, true, true],
+    ["cloud", true, true, false, false],
+    ["sandbox", true, false, true, false],
   ] as const)(
     "maps %s to control-plane=%s, managed-cloud=%s, direct-runtime=%s",
     (
@@ -23,6 +24,7 @@ describe("backend capabilities", () => {
       expectedControlPlane,
       expectedManagedCloud,
       expectedDirectRuntime,
+      expectedPlugins,
     ) => {
       const backend: { kind: BackendKind } = { kind };
 
@@ -30,10 +32,12 @@ describe("backend capabilities", () => {
         usesControlPlane: expectedControlPlane,
         usesManagedCloud: expectedManagedCloud,
         usesDirectRuntime: expectedDirectRuntime,
+        features: expect.objectContaining({ plugins: expectedPlugins }),
       });
       expect(usesControlPlane(backend)).toBe(expectedControlPlane);
       expect(usesManagedCloud(backend)).toBe(expectedManagedCloud);
       expect(usesDirectRuntime(backend)).toBe(expectedDirectRuntime);
+      expect(supportsBackendFeature(backend, "plugins")).toBe(expectedPlugins);
     },
   );
 
@@ -55,6 +59,32 @@ describe("backend capabilities", () => {
       expect(isLocalBackend(kind)).toBe(local);
       expect(isCloudBackend(kind)).toBe(cloud);
       expect(isSandboxBackend(kind)).toBe(sandbox);
+    },
+  );
+
+  it.each([
+    ["local", true, true, true, true, true, true],
+    ["cloud", true, false, true, false, false, true],
+    ["sandbox", false, false, false, false, false, false],
+  ] as const)(
+    "publishes the %s feature policy",
+    (
+      kind,
+      agentProfiles,
+      canvasExtensions,
+      llmProfileDuplication,
+      llmSubscriptionAuth,
+      plugins,
+      telemetry,
+    ) => {
+      expect(getBackendCapabilities(kind).features).toEqual({
+        agentProfiles,
+        canvasExtensions,
+        llmProfileDuplication,
+        llmSubscriptionAuth,
+        plugins,
+        telemetry,
+      });
     },
   );
 });

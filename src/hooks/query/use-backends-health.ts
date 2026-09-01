@@ -220,9 +220,11 @@ export interface UseBackendsHealthOptions {
  * Poll every backend in `backends` once every 10s and report a simple
  * connected / disconnected verdict per backend id.
  *
- * The query key includes `host` and `apiKey` so editing a backend's
- * connection details re-keys the query and triggers an immediate
- * refetch instead of waiting for the next tick.
+ * The query key includes `host` and a credential revision so editing a
+ * backend's connection details re-keys the query and triggers an immediate
+ * refetch instead of waiting for the next tick. The credential itself must
+ * never enter a React Query key because query keys can be persisted or
+ * inspected by tooling.
  *
  * After `MAX_CONSECUTIVE_FAILURES` failures in a row, ordinary polling
  * stops for that backend until the user updates its host / apiKey.
@@ -263,7 +265,7 @@ export function useBackendsHealth(
           b.id,
           b.kind,
           b.host,
-          b.apiKey ?? "",
+          b.connectionRevision ?? 0,
         ] as const,
         queryFn: async () => {
           try {

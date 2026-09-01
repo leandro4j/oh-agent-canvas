@@ -22,7 +22,7 @@ const useSettingsSchema = (
       orgId,
       backend.kind,
       backend.host,
-      backend.apiKey,
+      backend.connectionRevision ?? 0,
     ],
     queryFn:
       type === "conversation"

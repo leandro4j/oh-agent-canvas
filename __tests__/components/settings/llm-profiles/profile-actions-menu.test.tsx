@@ -23,6 +23,7 @@ const defaultProps = {
   onEdit: vi.fn(),
   onRename: vi.fn(),
   onDuplicate: vi.fn(),
+  canDuplicate: true,
   onSetActive: vi.fn(),
   onDelete: vi.fn(),
   isActive: false,
@@ -31,6 +32,12 @@ const defaultProps = {
 };
 
 describe("ProfileActionsMenu", () => {
+  it("omits Duplicate when the backend cannot preserve a cloned credential", () => {
+    render(<ProfileActionsMenu {...defaultProps} canDuplicate={false} />);
+
+    expect(screen.queryByTestId("profile-duplicate")).not.toBeInTheDocument();
+  });
+
   it("renders Edit, Rename, Duplicate, Set Active, and Delete buttons", () => {
     render(<ProfileActionsMenu {...defaultProps} />);
 

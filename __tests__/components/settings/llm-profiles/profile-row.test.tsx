@@ -31,6 +31,7 @@ const defaultProps = {
   profile: mockProfile,
   isActive: false,
   canManage: true,
+  canDuplicate: true,
   onActivate: vi.fn(),
   onEdit: vi.fn(),
   onRename: vi.fn(),

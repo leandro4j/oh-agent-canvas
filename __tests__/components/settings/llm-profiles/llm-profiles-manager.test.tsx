@@ -8,6 +8,23 @@ import ProfilesService, {
   ProfileInfo,
 } from "#/api/profiles-service/profiles-service.api";
 
+const activeBackendState = vi.hoisted(() => ({
+  kind: "local" as "local" | "sandbox",
+}));
+
+vi.mock("#/contexts/active-backend-context", () => ({
+  useActiveBackend: () => ({
+    backend: {
+      id: activeBackendState.kind,
+      name: activeBackendState.kind,
+      host: "http://backend.test",
+      apiKey: "session-key",
+      kind: activeBackendState.kind,
+    },
+    orgId: null,
+  }),
+}));
+
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string, params?: Record<string, string>) => {
@@ -75,6 +92,7 @@ describe("LlmProfilesManager", () => {
   };
 
   beforeEach(() => {
+    activeBackendState.kind = "local";
     queryClient = new QueryClient({
       defaultOptions: {
         queries: { retry: false },
@@ -195,6 +213,23 @@ describe("LlmProfilesManager", () => {
     await user.click(screen.getByText("Edit"));
 
     expect(handleEditProfile).toHaveBeenCalledWith(mockProfiles[0]);
+  });
+
+  it("does not offer credential-breaking duplication on Sandbox", async () => {
+    activeBackendState.kind = "sandbox";
+    const user = userEvent.setup();
+    vi.mocked(ProfilesService.listProfiles).mockResolvedValue({
+      profiles: mockProfiles,
+      active_profile: "gpt-4-profile",
+    });
+
+    renderManager({ onEditProfile: vi.fn() });
+
+    await screen.findByText("gpt-4-profile");
+    await user.click(screen.getAllByTestId("profile-menu-trigger")[0]);
+
+    expect(screen.queryByTestId("profile-duplicate")).not.toBeInTheDocument();
+    expect(ProfilesService.getProfile).not.toHaveBeenCalled();
   });
 
   it("opens rename modal when Rename is clicked from profile menu", async () => {

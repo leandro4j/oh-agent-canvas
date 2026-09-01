@@ -5,7 +5,6 @@ import { I18nKey } from "#/i18n/declaration";
 import { SidebarNavLink } from "#/components/features/sidebar/sidebar-nav-link";
 import { BackendSyncedSettingsBadge } from "#/components/features/settings/backend-synced-settings-badge";
 import { useActiveBackendContext } from "#/contexts/active-backend-context";
-import { isNoBackend } from "#/api/backend-registry/active-store";
 import { cn } from "#/utils/utils";
 import {
   SIDEBAR_ICON_SLOT_CLASS,
@@ -13,18 +12,15 @@ import {
   sidebarNavLabelClassName,
   sidebarNavRowClassName,
 } from "#/components/features/sidebar/sidebar-layout";
-import { EXTENSIONS_NAV_ITEMS } from "./extensions-navigation";
-
-/** Only the Skills item points to a cloud-hosted page today. */
-const CLOUD_LINKED_EXTENSION_PATH = "/skills";
-/** Backend-installed artifacts are not available on Cloud backends yet. */
-const CLOUD_HIDDEN_EXTENSION_PATHS = new Set(["/plugins", "/extensions"]);
+import {
+  getVisibleExtensionNavItems,
+  isCloudLinkedExtensionItem,
+} from "./extensions-navigation";
 
 export function ExtensionsMobileHub() {
   const { t } = useTranslation("openhands");
   const { active } = useActiveBackendContext();
   const { backend } = active;
-  const isCloudBackend = !isNoBackend(backend) && backend.kind === "cloud";
 
   return (
     <div
@@ -33,11 +29,8 @@ export function ExtensionsMobileHub() {
     >
       <Typography.H2>{t(I18nKey.NAV$CUSTOMIZE)}</Typography.H2>
       <nav className="flex flex-col gap-0.5">
-        {EXTENSIONS_NAV_ITEMS.filter(
-          (item) =>
-            !(CLOUD_HIDDEN_EXTENSION_PATHS.has(item.to) && isCloudBackend),
-        ).map((item) => {
-          if (item.to === CLOUD_LINKED_EXTENSION_PATH && isCloudBackend) {
+        {getVisibleExtensionNavItems(backend).map((item) => {
+          if (isCloudLinkedExtensionItem(backend, item)) {
             const cloudSkillsUrl = `${backend.host.replace(/\/+$/, "")}/settings/skills`;
             return (
               <a
