@@ -10,6 +10,7 @@ import { useRuntimeIsReady } from "#/hooks/use-runtime-is-ready";
 import { useActiveConversation } from "#/hooks/query/use-active-conversation";
 import { useActiveBackend } from "#/contexts/active-backend-context";
 import { useCloudSandbox } from "#/hooks/query/use-cloud-sandbox";
+import { isSandboxBackend } from "#/api/backend-registry/capabilities";
 import {
   getOriginVSCodeBasePath,
   isVSCodeUrlServedByOrigin,
@@ -32,7 +33,7 @@ export const useUnifiedVSCodeUrl = () => {
   const sessionApiKey = conversation?.session_api_key ?? null;
   const sandboxId = conversation?.sandbox_id ?? null;
   const isCloud = active.backend.kind === "cloud";
-  const isSandbox = active.backend.kind === "sandbox";
+  const isSandbox = isSandboxBackend(active.backend);
 
   // The origin half of the availability question. The agent-server will
   // happily report an editor this page has no route to — see

@@ -3,6 +3,7 @@ import { RemoteEventsList } from "@openhands/typescript-client/events/remote-eve
 import { OpenHandsEvent } from "#/types/agent-server/core";
 import { buildHttpBaseUrl } from "#/utils/websocket-url";
 import { getActiveBackend } from "../backend-registry/active-store";
+import { isSandboxBackend } from "../backend-registry/capabilities";
 import { callCloudProxy } from "../cloud/proxy";
 import {
   getSandboxConversationEventCount,
@@ -90,7 +91,7 @@ class EventService {
       });
     }
 
-    if (active.kind === "sandbox" && (!conversationUrl || !sessionApiKey)) {
+    if (isSandboxBackend(active) && (!conversationUrl || !sessionApiKey)) {
       return getSandboxConversationEventCount(conversationId);
     }
 
@@ -171,7 +172,7 @@ class EventService {
       }
     }
 
-    if (active.kind === "sandbox" && (!conversationUrl || !sessionApiKey)) {
+    if (isSandboxBackend(active) && (!conversationUrl || !sessionApiKey)) {
       return searchSandboxConversationEvents(conversationId, options);
     }
 

@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AgentServerClient } from "@openhands/typescript-client/clients";
+import {
+  AgentServerClient,
+  CloudClient,
+} from "@openhands/typescript-client/clients";
 import SettingsService from "#/api/settings-service/settings-service.api";
 import ProfilesService from "#/api/profiles-service/profiles-service.api";
 import { SecretsService } from "#/api/secrets-service";
@@ -33,18 +36,52 @@ const { get, post, put, remove, clientOptions } = vi.hoisted(() => ({
   clientOptions: [] as unknown[],
 }));
 
-vi.mock("@openhands/typescript-client/clients", () => ({
-  AgentServerClient: vi.fn(function AgentServerClientMock(options: unknown) {
-    clientOptions.push(options);
-    return {
-      get,
-      post,
-      put,
-      delete: remove,
-      close: vi.fn(),
-    };
-  }),
-}));
+vi.mock("@openhands/typescript-client/clients", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@openhands/typescript-client/clients")
+    >();
+  return {
+    ...actual,
+    AgentServerClient: vi.fn(function AgentServerClientMock(options: unknown) {
+      clientOptions.push(options);
+      return {
+        get,
+        post,
+        put,
+        delete: remove,
+        close: vi.fn(),
+      };
+    }),
+    CloudClient: class CloudClientMock extends actual.CloudClient {
+      constructor(
+        options: ConstructorParameters<typeof actual.CloudClient>[0],
+      ) {
+        super(options);
+        clientOptions.push(options);
+      }
+    },
+  };
+});
+
+const controlPlaneRequest = vi.spyOn(CloudClient.prototype, "request");
+
+function normalizeControlPlanePath(path: string): {
+  path: string;
+  params?: Record<string, string | number>;
+} {
+  const url = new URL(path, "https://sandbox.example.test");
+  const params = Object.fromEntries(
+    [...url.searchParams].map(([key, value]) => [
+      key,
+      key === "limit" ? Number(value) : value,
+    ]),
+  );
+  return {
+    path: url.pathname.replace(/^\/api\/v1/, ""),
+    ...(Object.keys(params).length > 0 ? { params } : {}),
+  };
+}
 
 const sandboxBackend: Backend = {
   id: "sandbox",
@@ -64,6 +101,19 @@ describe("Sandbox backend control-plane contracts", () => {
     post.mockReset();
     put.mockReset();
     remove.mockReset();
+    controlPlaneRequest.mockReset();
+    controlPlaneRequest.mockImplementation(({ method, path, body }) => {
+      const normalized = normalizeControlPlanePath(path);
+      if (method === "GET") {
+        return normalized.params
+          ? get(normalized.path, { params: normalized.params })
+          : get(normalized.path);
+      }
+      if (method === "POST") return post(normalized.path, body);
+      if (method === "PUT") return put(normalized.path, body);
+      if (method === "DELETE") return remove(normalized.path);
+      throw new Error(`Unexpected control-plane method: ${method}`);
+    });
     clientOptions.length = 0;
     vi.mocked(AgentServerClient).mockClear();
   });
@@ -102,8 +152,13 @@ describe("Sandbox backend control-plane contracts", () => {
     );
     expect(clientOptions[0]).toEqual(
       expect.objectContaining({
-        host: "https://sandbox.example.test/api/v1",
-        apiKey: sandboxBackend.apiKey,
+        host: sandboxBackend.host,
+      }),
+    );
+    expect(controlPlaneRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        authMode: "session-api-key",
+        sessionApiKey: sandboxBackend.apiKey,
       }),
     );
     expect(get).toHaveBeenCalledWith("/settings");
@@ -242,8 +297,14 @@ describe("Sandbox backend control-plane contracts", () => {
     });
     expect(clientOptions).toHaveLength(6);
     for (const options of clientOptions) {
+      expect(options).not.toHaveProperty("apiKey");
+    }
+    for (const [options] of controlPlaneRequest.mock.calls) {
       expect(options).toEqual(
-        expect.objectContaining({ apiKey: sandboxBackend.apiKey }),
+        expect.objectContaining({
+          authMode: "session-api-key",
+          sessionApiKey: sandboxBackend.apiKey,
+        }),
       );
     }
   });

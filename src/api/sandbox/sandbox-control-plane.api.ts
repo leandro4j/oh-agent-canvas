@@ -1,21 +1,8 @@
-import type { SandboxStatus } from "../conversation-service/agent-server-conversation-service.types";
+import type { CloudSandboxInfo } from "@openhands/typescript-client/clients";
 import type { Backend } from "../backend-registry/types";
 import { withSandboxControlPlaneClient } from "./sandbox-client.api";
 
-export interface SandboxExposedUrl {
-  name: string;
-  url: string;
-}
-
-export interface SandboxInfo {
-  id: string;
-  created_by_user_id: string | null;
-  sandbox_spec_id: string;
-  status: SandboxStatus;
-  session_api_key: string | null;
-  exposed_urls: SandboxExposedUrl[] | null;
-  created_at: string;
-}
+export type SandboxInfo = CloudSandboxInfo;
 
 export async function batchGetSandboxInfos(
   ids: string[],
@@ -24,10 +11,7 @@ export async function batchGetSandboxInfos(
   if (ids.length === 0) return [];
 
   const data = await withSandboxControlPlaneClient(
-    (client) =>
-      client.get<(SandboxInfo | null)[]>("/sandboxes", {
-        params: { id: ids },
-      }),
+    (client) => client.getSandboxes(ids),
     backend,
   );
 

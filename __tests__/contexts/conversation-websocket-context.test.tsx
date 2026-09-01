@@ -2,7 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createUserMessageEvent } from "test-utils";
-import { ConversationWebSocketProvider } from "#/contexts/conversation-websocket-context";
+import {
+  ConversationWebSocketProvider,
+  useConversationWebSocket,
+} from "#/contexts/conversation-websocket-context";
 import { useEventStore } from "#/stores/use-event-store";
 import useMetricsStore from "#/stores/metrics-store";
 import { useOptimisticUserMessageStore } from "#/stores/optimistic-user-message-store";
@@ -12,6 +15,7 @@ import { useErrorMessageStore } from "#/stores/error-message-store";
 import { useUserConversation } from "#/hooks/query/use-user-conversation";
 import { useWebSocket } from "#/hooks/use-websocket";
 import EventService from "#/api/event-service/event-service.api";
+import AgentServerConversationService from "#/api/conversation-service/agent-server-conversation-service.api";
 import {
   getStoredConversationMetadata,
   setStoredConversationMetadata,
@@ -217,6 +221,44 @@ describe("ConversationWebSocketProvider — conversation-scoped event store", ()
     expect(wsCapture.mainOptions?.queryParams).not.toHaveProperty(
       "session_api_key",
     );
+  });
+
+  it("queues a disconnected message through the backend-aware conversation module", async () => {
+    const message = {
+      role: "user" as const,
+      content: [{ type: "text" as const, text: "hello" }],
+    };
+    const sendSpy = vi
+      .spyOn(AgentServerConversationService, "sendMessage")
+      .mockResolvedValue(message);
+    let sendMessage:
+      | NonNullable<ReturnType<typeof useConversationWebSocket>>["sendMessage"]
+      | undefined;
+
+    const Probe = () => {
+      sendMessage = useConversationWebSocket()?.sendMessage;
+      return null;
+    };
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ConversationWebSocketProvider
+          conversationId="conv-queue"
+          conversationUrl="https://runtime.example.test/api/conversations/conv-queue"
+          sessionApiKey="runtime-key"
+        >
+          <Probe />
+        </ConversationWebSocketProvider>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(sendMessage).toBeDefined());
+
+    await expect(sendMessage!(message)).resolves.toEqual({ queued: true });
+    expect(sendSpy).toHaveBeenCalledWith("conv-queue", message, {
+      conversationUrl:
+        "https://runtime.example.test/api/conversations/conv-queue",
+      sessionApiKey: "runtime-key",
+    });
   });
 
   it("keeps the events socket up, with its `since` anchor, across background history refetches", async () => {

@@ -16,7 +16,10 @@ const { mockListSecrets, mockGetSecret, mockUpsertSecret, mockDeleteSecret } =
     mockDeleteSecret: vi.fn(),
   }));
 
-vi.mock("@openhands/typescript-client/clients", () => ({
+vi.mock("@openhands/typescript-client/clients", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@openhands/typescript-client/clients")
+  >()),
   SettingsClient: vi.fn(function SettingsClientMock() {
     return {
       listSecrets: mockListSecrets,

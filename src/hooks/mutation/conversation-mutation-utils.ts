@@ -10,6 +10,7 @@ import {
 import { getAgentServerClientOptions } from "#/api/agent-server-client-options";
 import AgentServerConversationService from "#/api/conversation-service/agent-server-conversation-service.api";
 import { AppConversation } from "#/api/conversation-service/agent-server-conversation-service.types";
+import { isSandboxBackend } from "#/api/backend-registry/capabilities";
 
 type ExecutionStatusValue = AppConversation["execution_status"];
 
@@ -58,7 +59,7 @@ export const pauseConversation = async (conversationId: string) => {
     return { success: true };
   }
 
-  if (activeBackend.kind === "sandbox") {
+  if (isSandboxBackend(activeBackend)) {
     if (!sandboxId) {
       throw new Error(
         `Cannot stop runtime: Sandbox conversation ${conversationId} has no sandbox_id.`,
@@ -134,7 +135,7 @@ export const resumeConversation = async (conversationId: string) => {
   const { conversationUrl, sessionApiKey, sandboxId } =
     await fetchConversationData(conversationId);
 
-  if (getActiveBackend().backend.kind === "sandbox") {
+  if (isSandboxBackend(getActiveBackend().backend)) {
     if (!sandboxId) {
       throw new Error(
         `Cannot resume runtime: Sandbox conversation ${conversationId} has no sandbox_id.`,

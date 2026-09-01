@@ -12,6 +12,10 @@ import {
   LLM_PROFILES_QUERY_KEYS,
 } from "#/hooks/query/query-keys";
 import { isSubscriptionLlmConfig } from "#/constants/llm-subscription";
+import {
+  isSandboxBackend,
+  usesDirectRuntime,
+} from "#/api/backend-registry/capabilities";
 
 interface LlmConfiguredResult {
   /**
@@ -54,8 +58,7 @@ export function useLlmConfigured(): LlmConfiguredResult {
     isError: profilesError,
   } = useLlmProfiles();
   const { backend, orgId } = useActiveBackend();
-  const isProfileBackend =
-    backend.kind === "local" || backend.kind === "sandbox";
+  const isProfileBackend = usesDirectRuntime(backend);
 
   // The active AgentProfile is the current agent — an ACP profile owns its LLM
   // via the subprocess and never needs an API key. Fall back to the global
@@ -145,7 +148,7 @@ export function useLlmConfigured(): LlmConfiguredResult {
   // for an explicitly empty profile store. Once profiles exist, their active
   // profile remains the source of truth, matching local behavior.
   const hasUsableSandboxSettingsFallback =
-    backend.kind === "sandbox" &&
+    isSandboxBackend(backend) &&
     profilesData?.profiles.length === 0 &&
     hasApiKey;
   const hasUsableLlm = isProfileBackend

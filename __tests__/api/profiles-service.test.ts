@@ -33,7 +33,10 @@ const {
   mockClose: vi.fn(),
 }));
 
-vi.mock("@openhands/typescript-client/clients", () => ({
+vi.mock("@openhands/typescript-client/clients", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@openhands/typescript-client/clients")
+  >()),
   ProfilesClient: vi.fn(function ProfilesClientMock() {
     return {
       listProfiles: mockListProfiles,

@@ -3,6 +3,7 @@ import { OSS_NAV_ITEMS, SettingsNavItem } from "#/constants/settings-nav";
 import { isSettingsPageHidden } from "#/utils/settings-utils";
 import { I18nKey } from "#/i18n/declaration";
 import { useActiveBackend } from "#/contexts/active-backend-context";
+import { usesDirectRuntime } from "#/api/backend-registry/capabilities";
 
 export type SettingsNavRenderedItem =
   | {
@@ -24,14 +25,12 @@ export function useSettingsNavItems(): SettingsNavRenderedItem[] {
       item.to === "/settings"
         ? {
             ...item,
-            text:
-              backend.kind === "local" || backend.kind === "sandbox"
-                ? I18nKey.SETTINGS$LLM_PROFILES
-                : item.text,
-            subtitle:
-              backend.kind === "local" || backend.kind === "sandbox"
-                ? I18nKey.SETTINGS$PAGE_LLM_PROFILES_SUBLINE
-                : item.subtitle,
+            text: usesDirectRuntime(backend)
+              ? I18nKey.SETTINGS$LLM_PROFILES
+              : item.text,
+            subtitle: usesDirectRuntime(backend)
+              ? I18nKey.SETTINGS$PAGE_LLM_PROFILES_SUBLINE
+              : item.subtitle,
           }
         : item;
 

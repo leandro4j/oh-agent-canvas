@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   BACKEND_CAPABILITIES,
   getBackendCapabilities,
+  isCloudBackend,
+  isLocalBackend,
+  isSandboxBackend,
   supportsBackendFeature,
   usesControlPlane,
   usesDirectRuntime,
@@ -45,6 +48,19 @@ describe("backend capabilities", () => {
       "sandbox",
     ]);
   });
+
+  it.each([
+    ["local", true, false, false],
+    ["cloud", false, true, false],
+    ["sandbox", false, false, true],
+  ] as const)(
+    "derives the %s backend mode from capabilities",
+    (kind, local, cloud, sandbox) => {
+      expect(isLocalBackend(kind)).toBe(local);
+      expect(isCloudBackend(kind)).toBe(cloud);
+      expect(isSandboxBackend(kind)).toBe(sandbox);
+    },
+  );
 
   it.each([
     ["local", true, true, true, true, true, true],

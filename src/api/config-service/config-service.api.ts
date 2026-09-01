@@ -3,6 +3,7 @@ import { getAgentServerClientOptions } from "../agent-server-client-options";
 import { getActiveBackend } from "../backend-registry/active-store";
 import { callCloudProxy } from "../cloud/proxy";
 import { withSandboxControlPlaneClient } from "../sandbox/sandbox-client.api";
+import { isSandboxBackend } from "../backend-registry/capabilities";
 import type {
   LLMModel,
   LLMModelPage,
@@ -94,17 +95,17 @@ class ConfigService {
       });
     }
 
-    if (active.backend.kind === "sandbox") {
+    if (isSandboxBackend(active.backend)) {
       return withSandboxControlPlaneClient((client) =>
-        client.get<LLMModelPage>("/config/models/search", {
-          params: definedParams({
+        client.searchModels<LLMModelPage>(
+          definedParams({
             page_id: params.page_id,
             limit: params.limit,
             query: params.query,
             verified__eq: params.verified__eq,
             provider__eq: params.provider__eq,
           }),
-        }),
+        ),
       );
     }
 
@@ -179,16 +180,16 @@ class ConfigService {
       });
     }
 
-    if (active.backend.kind === "sandbox") {
+    if (isSandboxBackend(active.backend)) {
       return withSandboxControlPlaneClient((client) =>
-        client.get<ProviderPage>("/config/providers/search", {
-          params: definedParams({
+        client.searchProviders<ProviderPage>(
+          definedParams({
             page_id: params.page_id,
             limit: params.limit,
             query: params.query,
             verified__eq: params.verified__eq,
           }),
-        }),
+        ),
       );
     }
 

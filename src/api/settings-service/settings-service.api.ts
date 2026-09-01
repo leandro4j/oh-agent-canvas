@@ -21,6 +21,7 @@ import {
 } from "../cloud/settings-service.api";
 import { getAgentServerClientOptions } from "../agent-server-client-options";
 import { withSandboxControlPlaneClient } from "../sandbox/sandbox-client.api";
+import { isSandboxBackend } from "../backend-registry/capabilities";
 
 /**
  * Fields the agent-server stores under `misc_settings.app_preferences` (see
@@ -650,13 +651,13 @@ class SettingsService {
   static async fetchSettingsFromApi(
     exposeSecrets?: ExposeSecretsMode,
   ): Promise<SettingsApiResponse> {
-    if (getActiveBackend().backend.kind === "sandbox") {
+    if (isSandboxBackend(getActiveBackend().backend)) {
       // Sandbox Server owns the settings store and exposes it below /api/v1.
       // Its response is the app-server Settings model, not the legacy
       // agent-server `/api/settings` response, so normalize it here.
       return withRetry(() =>
         withSandboxControlPlaneClient((client) =>
-          client.get<unknown>("/settings"),
+          client.getSettingsWithDerivedFields(),
         ),
       ).then(normalizeSandboxSettingsResponse);
     }
@@ -729,7 +730,7 @@ class SettingsService {
     conversationSettings: Record<string, SettingsValue>;
     secretsEncrypted: boolean;
   }> {
-    const isSandbox = getActiveBackend().backend.kind === "sandbox";
+    const isSandbox = isSandboxBackend(getActiveBackend().backend);
     const backendKey = prepareCacheForActiveBackend();
 
     // Check cache first
@@ -762,10 +763,10 @@ class SettingsService {
     if (getActiveBackend().backend.kind === "cloud") {
       return (await fetchCloudSettingsSchema()) as SettingsSchema;
     }
-    if (getActiveBackend().backend.kind === "sandbox") {
-      return withSandboxControlPlaneClient((client) =>
-        client.get<SettingsSchema>("/settings/agent-schema"),
-      );
+    if (isSandboxBackend(getActiveBackend().backend)) {
+      return (await withSandboxControlPlaneClient((client) =>
+        client.getSettingsSchema(),
+      )) as SettingsSchema;
     }
     return (await new SettingsClient(
       getAgentServerClientOptions(),
@@ -776,10 +777,10 @@ class SettingsService {
     if (getActiveBackend().backend.kind === "cloud") {
       return (await fetchCloudConversationSettingsSchema()) as SettingsSchema;
     }
-    if (getActiveBackend().backend.kind === "sandbox") {
-      return withSandboxControlPlaneClient((client) =>
-        client.get<SettingsSchema>("/settings/conversation-schema"),
-      );
+    if (isSandboxBackend(getActiveBackend().backend)) {
+      return (await withSandboxControlPlaneClient((client) =>
+        client.getConversationSettingsSchema(),
+      )) as SettingsSchema;
     }
     return (await new SettingsClient(
       getAgentServerClientOptions(),
@@ -799,7 +800,7 @@ class SettingsService {
           agent_settings_diff: { mcp_config: mcpConfig as SettingsValue },
         }),
       );
-    } else if (getActiveBackend().backend.kind === "sandbox") {
+    } else if (isSandboxBackend(getActiveBackend().backend)) {
       const current = await SettingsService.fetchSettingsFromApi();
       const currentMcp = current.agent_settings.mcp_config;
       const nextMcp: Record<string, unknown> = isRecord(currentMcp)
@@ -817,8 +818,8 @@ class SettingsService {
       }
       await withRetry(() =>
         withSandboxControlPlaneClient((client) =>
-          client.post("/settings", {
-            agent_settings_diff: { mcp_config: nextMcp as SettingsValue },
+          client.saveSettings({
+            agent_settings_diff: { mcp_config: nextMcp as never },
           }),
         ),
       );
@@ -840,7 +841,7 @@ class SettingsService {
     if (getActiveBackend().backend.kind === "cloud") {
       return SettingsService.patchMcpConfig({ [settingsKey]: patch });
     }
-    if (getActiveBackend().backend.kind === "sandbox") {
+    if (isSandboxBackend(getActiveBackend().backend)) {
       return SettingsService.patchMcpConfig({ [settingsKey]: patch });
     }
     await withRetry(() =>
@@ -860,7 +861,7 @@ class SettingsService {
     if (getActiveBackend().backend.kind === "cloud") {
       return SettingsService.patchMcpConfig({ [settingsKey]: server });
     }
-    if (getActiveBackend().backend.kind === "sandbox") {
+    if (isSandboxBackend(getActiveBackend().backend)) {
       return SettingsService.patchMcpConfig({ [settingsKey]: server });
     }
     await withRetry(() =>
@@ -877,7 +878,7 @@ class SettingsService {
     if (getActiveBackend().backend.kind === "cloud") {
       return SettingsService.patchMcpConfig({ [settingsKey]: null });
     }
-    if (getActiveBackend().backend.kind === "sandbox") {
+    if (isSandboxBackend(getActiveBackend().backend)) {
       return SettingsService.patchMcpConfig({ [settingsKey]: null });
     }
     await withRetry(() =>
@@ -966,21 +967,23 @@ class SettingsService {
         cloudPayload.app_preferences = appPreferences;
       }
       await withRetry(() => saveCloudSettings(cloudPayload));
-    } else if (activeBackend.kind === "sandbox") {
-      const sandboxPayload: Record<string, unknown> = { ...payload };
-      delete sandboxPayload.misc_settings_diff;
-      if (hasAppPreferences) {
-        Object.assign(sandboxPayload, appPreferences);
-      }
-
-      const hasSandboxDiffs = Object.keys(sandboxPayload).length > 0;
+    } else if (isSandboxBackend(activeBackend)) {
+      const hasSandboxDiffs =
+        !!payload.agent_settings_diff ||
+        !!payload.conversation_settings_diff ||
+        hasAppPreferences;
       if (!hasSandboxDiffs) {
         return true;
       }
 
       await withRetry(() =>
         withSandboxControlPlaneClient((client) =>
-          client.post("/settings", sandboxPayload),
+          client.saveSettings({
+            agent_settings_diff: payload.agent_settings_diff as never,
+            conversation_settings_diff:
+              payload.conversation_settings_diff as never,
+            ...(hasAppPreferences ? { app_preferences: appPreferences } : {}),
+          }),
         ),
       );
     } else {

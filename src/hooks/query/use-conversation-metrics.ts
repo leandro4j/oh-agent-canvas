@@ -3,6 +3,7 @@ import AgentServerConversationService from "#/api/conversation-service/agent-ser
 import { getCombinedMetrics } from "#/utils/conversation-metrics";
 import type { MetricsSnapshot } from "#/api/conversation-service/agent-server-conversation-service.types";
 import { useActiveBackend } from "#/contexts/active-backend-context";
+import { usesControlPlane } from "#/api/backend-registry/capabilities";
 
 export const useConversationMetrics = (
   conversationId: string | null | undefined,
@@ -15,8 +16,7 @@ export const useConversationMetrics = (
   error: unknown;
 } => {
   const { backend } = useActiveBackend();
-  const requiresRuntime =
-    backend.kind === "cloud" || backend.kind === "sandbox";
+  const requiresRuntime = usesControlPlane(backend);
   const hasRuntime = !requiresRuntime || (!!conversationUrl && !!sessionApiKey);
 
   const query = useQuery({

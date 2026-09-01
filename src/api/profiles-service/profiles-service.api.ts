@@ -41,6 +41,7 @@ import {
   saveCloudProfile,
 } from "../cloud/profiles-service.api";
 import { withSandboxControlPlaneClient } from "../sandbox/sandbox-client.api";
+import { isSandboxBackend as hasSandboxBackendMode } from "../backend-registry/capabilities";
 
 /**
  * Profile summaries carry an optional `provider_connection_id` (the shared
@@ -76,7 +77,7 @@ function isCloudBackend(): boolean {
 }
 
 function isSandboxBackend(): boolean {
-  return getActiveBackend().backend.kind === "sandbox";
+  return hasSandboxBackendMode(getActiveBackend().backend);
 }
 
 function isAbortLike(error: unknown): boolean {
@@ -96,9 +97,7 @@ class ProfilesService {
   static async listProfiles(): Promise<ProfileListResponse> {
     if (isCloudBackend()) return fetchCloudProfiles();
     if (isSandboxBackend()) {
-      return withSandboxControlPlaneClient((client) =>
-        client.get<ProfileListResponse>("/settings/profiles"),
-      );
+      return withSandboxControlPlaneClient((client) => client.listProfiles());
     }
     return new ProfilesClient(getAgentServerClientOptions()).listProfiles();
   }
@@ -111,11 +110,7 @@ class ProfilesService {
     // api_key_set flag), so `exposeSecrets` is local-only.
     if (isCloudBackend()) return fetchCloudProfile(name);
     if (isSandboxBackend()) {
-      return withSandboxControlPlaneClient((client) =>
-        client.get<ProfileDetailResponse>(
-          `/settings/profiles/${encodeURIComponent(name)}`,
-        ),
-      );
+      return withSandboxControlPlaneClient((client) => client.getProfile(name));
     }
     const options: GetProfileOptions = exposeSecrets ? { exposeSecrets } : {};
     return new ProfilesClient(getAgentServerClientOptions()).getProfile(
@@ -140,10 +135,7 @@ class ProfilesService {
         preserve_existing_api_key: request.llm.api_key == null,
       };
       return withSandboxControlPlaneClient((client) =>
-        client.post<ProfileMutationResponse>(
-          `/settings/profiles/${encodeURIComponent(name)}`,
-          sandboxRequest,
-        ),
+        client.saveProfile(name, sandboxRequest),
       );
     }
     return new ProfilesClient(getAgentServerClientOptions()).saveProfile(
@@ -156,9 +148,7 @@ class ProfilesService {
     if (isCloudBackend()) return deleteCloudProfile(name);
     if (isSandboxBackend()) {
       return withSandboxControlPlaneClient((client) =>
-        client.delete<ProfileMutationResponse>(
-          `/settings/profiles/${encodeURIComponent(name)}`,
-        ),
+        client.deleteProfile(name),
       );
     }
     return new ProfilesClient(getAgentServerClientOptions()).deleteProfile(
@@ -173,10 +163,7 @@ class ProfilesService {
     if (isCloudBackend()) return renameCloudProfile(name, newName);
     if (isSandboxBackend()) {
       return withSandboxControlPlaneClient((client) =>
-        client.post<ProfileMutationResponse>(
-          `/settings/profiles/${encodeURIComponent(name)}/rename`,
-          { new_name: newName },
-        ),
+        client.renameProfile(name, newName),
       );
     }
     return new ProfilesClient(getAgentServerClientOptions()).renameProfile(
@@ -189,9 +176,7 @@ class ProfilesService {
     if (isCloudBackend()) return activateCloudProfile(name);
     if (isSandboxBackend()) {
       return withSandboxControlPlaneClient((client) =>
-        client.post<ActivateProfileResponse>(
-          `/settings/profiles/${encodeURIComponent(name)}/activate`,
-        ),
+        client.activateProfile(name),
       );
     }
     return new ProfilesClient(getAgentServerClientOptions()).activateProfile(

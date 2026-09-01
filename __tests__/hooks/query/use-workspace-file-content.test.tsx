@@ -367,4 +367,51 @@ describe("useWorkspaceFileContent", () => {
       });
     });
   });
+
+  describe("sandbox backend", () => {
+    beforeEach(() => {
+      getActiveBackendMock.mockReturnValue({
+        backend: {
+          id: "sandbox-1",
+          kind: "sandbox",
+          host: "https://sandbox.example.test",
+        },
+        orgId: null,
+      });
+      useWorkspaceSessionMock.mockReturnValue({
+        data: null,
+        isLoading: false,
+        isError: false,
+        error: null,
+      });
+    });
+
+    it("renders authenticated runtime bytes through a revoked Blob URL", async () => {
+      const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]).buffer;
+      downloadFileMock.mockResolvedValue(bytes);
+      const createObjectUrlSpy = vi
+        .spyOn(URL, "createObjectURL")
+        .mockReturnValue("blob:sandbox-preview");
+      const revokeObjectUrlSpy = vi.spyOn(URL, "revokeObjectURL");
+
+      const { result, unmount } = renderHook(
+        () => useWorkspaceFileContent("assets/logo.png"),
+        { wrapper: makeWrapper() },
+      );
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(downloadFileMock).toHaveBeenCalledWith(
+        "https://agent.example.com/api/conversations/conv-1",
+        "session-key",
+        "/workspace/project/assets/logo.png",
+      );
+      expect(createObjectUrlSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "image/png" }),
+      );
+      expect(result.current.data?.staticUrl).toBe("blob:sandbox-preview");
+
+      unmount();
+      expect(revokeObjectUrlSpy).toHaveBeenCalledWith("blob:sandbox-preview");
+    });
+  });
 });

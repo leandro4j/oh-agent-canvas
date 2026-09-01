@@ -9,6 +9,10 @@ import { useBashCommandRunner } from "#/hooks/use-bash-command-runner";
 import { Provider } from "#/types/settings";
 import { getGitPath } from "#/utils/get-git-path";
 import { parseGitRemoteUrl } from "#/utils/parse-git-remote-url";
+import {
+  isSandboxBackend,
+  usesDirectRuntime,
+} from "#/api/backend-registry/capabilities";
 
 export interface LocalGitInfo {
   repository: string | null;
@@ -98,8 +102,7 @@ export const useLocalGitInfo = () => {
   const { data: conversation } = useActiveConversation();
   const runtimeIsReady = useRuntimeIsReady();
   const { backend } = useActiveBackend();
-  const usesDirectRuntime =
-    backend.kind === "local" || backend.kind === "sandbox";
+  const hasDirectRuntime = usesDirectRuntime(backend);
 
   const conversationId = conversation?.id;
   const conversationUrl = conversation?.conversation_url;
@@ -109,22 +112,21 @@ export const useLocalGitInfo = () => {
     conversation?.selected_repository,
     configuredWorkingDir,
   );
-  const workingDir =
-    backend.kind === "sandbox"
-      ? sandboxWorkingDir.startsWith("/")
-        ? sandboxWorkingDir
-        : `/${sandboxWorkingDir}`
-      : configuredWorkingDir;
+  const workingDir = isSandboxBackend(backend)
+    ? sandboxWorkingDir.startsWith("/")
+      ? sandboxWorkingDir
+      : `/${sandboxWorkingDir}`
+    : configuredWorkingDir;
   const hasConversationRepo = !!conversation?.selected_repository;
   const hasConversationProvider = !!conversation?.git_provider;
   const hasConversationBranch = !!conversation?.selected_branch;
 
   const queryEnabled =
-    usesDirectRuntime &&
+    hasDirectRuntime &&
     runtimeIsReady &&
     !!conversationId &&
     !!workingDir &&
-    (backend.kind !== "sandbox" || (!!conversationUrl && !!sessionApiKey)) &&
+    (!isSandboxBackend(backend) || (!!conversationUrl && !!sessionApiKey)) &&
     (!hasConversationRepo ||
       !hasConversationProvider ||
       !hasConversationBranch);

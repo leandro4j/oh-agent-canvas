@@ -1409,6 +1409,8 @@ async function main(options = {}) {
     // When true, enable public mode (require LOCAL_BACKEND_API_KEY,
     // don't bake session key into frontend).
     isPublic: isPublicOverride,
+    frontendOnly: frontendOnlyOverride,
+    backendOnly: backendOnlyOverride,
     // When true, skip the npm prerequisite check. Used by the Electron desktop
     // launcher where npm is not needed at runtime in static mode.
     skipNpmCheck = false,
@@ -1436,6 +1438,12 @@ async function main(options = {}) {
   // Allow options to override CLI args for public mode
   if (isPublicOverride != null) {
     args.public = isPublicOverride;
+  }
+  if (frontendOnlyOverride != null) {
+    args.frontendOnly = frontendOnlyOverride;
+  }
+  if (backendOnlyOverride != null) {
+    args.backendOnly = backendOnlyOverride;
   }
 
   // Allow options to override CLI args (for bin/agent-canvas.mjs)

@@ -25,6 +25,10 @@ import {
   getActiveBackend,
   getEffectiveLocalBackend,
 } from "../backend-registry/active-store";
+import {
+  isSandboxBackend,
+  usesControlPlane,
+} from "../backend-registry/capabilities";
 import { callCloudProxy } from "../cloud/proxy";
 import {
   batchGetSandboxConversations,
@@ -416,7 +420,7 @@ class AgentServerConversationService {
       return message;
     }
 
-    if (active.kind === "sandbox" && (!conversationUrl || !sessionApiKey)) {
+    if (isSandboxBackend(active) && (!conversationUrl || !sessionApiKey)) {
       const [conversation] = await batchGetSandboxConversations([
         conversationId,
       ]);
@@ -424,7 +428,7 @@ class AgentServerConversationService {
       sessionApiKey = conversation?.session_api_key?.trim() ?? null;
     }
 
-    if (active.kind === "sandbox" && (!conversationUrl || !sessionApiKey)) {
+    if (isSandboxBackend(active) && (!conversationUrl || !sessionApiKey)) {
       throw new Error(
         "Conversation sandbox is still starting. Wait for it to finish, then try again.",
       );
@@ -477,7 +481,7 @@ class AgentServerConversationService {
       trigger: "gui",
     };
 
-    if (activeBackend.kind === "sandbox") {
+    if (isSandboxBackend(activeBackend)) {
       return createSandboxConversation(request);
     }
 
@@ -599,7 +603,7 @@ class AgentServerConversationService {
     taskId: string,
   ): Promise<AppConversationStartTask | null> {
     const activeBackend = getActiveBackend().backend;
-    if (activeBackend.kind === "sandbox") {
+    if (isSandboxBackend(activeBackend)) {
       return getSandboxConversationStartTask(taskId);
     }
     if (activeBackend.kind === "cloud") {
@@ -618,7 +622,7 @@ class AgentServerConversationService {
   ): Promise<GetVSCodeUrlResponse> {
     const activeBackend = getActiveBackend().backend;
 
-    if (activeBackend.kind === "sandbox") {
+    if (isSandboxBackend(activeBackend)) {
       const [conversation] = await this.batchGetAppConversations([
         conversationId,
       ]);
@@ -687,7 +691,7 @@ class AgentServerConversationService {
     const [conversation] = await this.batchGetAppConversations([
       conversationId,
     ]);
-    if (getActiveBackend().backend.kind === "sandbox") {
+    if (isSandboxBackend(getActiveBackend().backend)) {
       return getSandboxConversationWorkingDir(conversation);
     }
     return conversation?.workspace?.working_dir ?? getAgentServerWorkingDir();
@@ -699,7 +703,7 @@ class AgentServerConversationService {
     if (ids.length === 0) return [];
 
     const activeBackend = getActiveBackend().backend;
-    if (activeBackend.kind === "sandbox") {
+    if (isSandboxBackend(activeBackend)) {
       return batchGetSandboxConversations(ids);
     }
     if (activeBackend.kind === "cloud") {
@@ -764,7 +768,7 @@ class AgentServerConversationService {
       return readCloudConversationFile(conversationId, path);
     }
 
-    if (getActiveBackend().backend.kind === "sandbox") {
+    if (isSandboxBackend(getActiveBackend().backend)) {
       const [conversation] = await this.batchGetAppConversations([
         conversationId,
       ]);
@@ -794,7 +798,7 @@ class AgentServerConversationService {
     if (activeBackend.kind === "cloud") {
       return downloadCloudConversation(conversationId);
     }
-    if (activeBackend.kind === "sandbox") {
+    if (isSandboxBackend(activeBackend)) {
       return downloadSandboxConversation(conversationId);
     }
 
@@ -872,7 +876,7 @@ class AgentServerConversationService {
     pageId?: string,
   ): Promise<AppConversationPage> {
     const activeBackend = getActiveBackend().backend;
-    if (activeBackend.kind === "sandbox") {
+    if (isSandboxBackend(activeBackend)) {
       return searchSandboxConversations(limit, pageId);
     }
     if (activeBackend.kind === "cloud") {
@@ -892,7 +896,7 @@ class AgentServerConversationService {
 
   static async deleteConversation(conversationId: string): Promise<void> {
     const activeBackend = getActiveBackend().backend;
-    if (activeBackend.kind === "sandbox") {
+    if (isSandboxBackend(activeBackend)) {
       await deleteSandboxConversation(conversationId);
     } else if (activeBackend.kind === "cloud") {
       await deleteCloudConversation(conversationId);
@@ -909,7 +913,7 @@ class AgentServerConversationService {
     title: string,
   ): Promise<AppConversation> {
     const activeBackend = getActiveBackend().backend;
-    if (activeBackend.kind === "sandbox") {
+    if (isSandboxBackend(activeBackend)) {
       return updateSandboxConversationTitle(conversationId, title);
     }
     if (activeBackend.kind === "cloud") {
@@ -937,7 +941,7 @@ class AgentServerConversationService {
     fromEventId: string,
     title?: string,
   ): Promise<DirectConversationInfo> {
-    if (["cloud", "sandbox"].includes(getActiveBackend().backend.kind)) {
+    if (usesControlPlane(getActiveBackend().backend)) {
       throw new Error(
         "Branching a conversation isn't supported on this backend.",
       );
@@ -974,7 +978,7 @@ class AgentServerConversationService {
     eventId: string,
   ): Promise<string | undefined> {
     const activeBackend = getActiveBackend().backend;
-    if (activeBackend.kind === "sandbox") {
+    if (isSandboxBackend(activeBackend)) {
       const [conversation] = await this.batchGetAppConversations([
         conversationId,
       ]);
@@ -1038,7 +1042,7 @@ class AgentServerConversationService {
       return;
     }
 
-    if (backend.kind === "sandbox") {
+    if (isSandboxBackend(backend)) {
       if (!conversationId) {
         await ProfilesService.activateProfile(profileName);
         return;
@@ -1117,7 +1121,7 @@ class AgentServerConversationService {
       return;
     }
 
-    if (backend.kind === "sandbox") {
+    if (isSandboxBackend(backend)) {
       const [conversation] = await this.batchGetAppConversations([
         conversationId,
       ]);

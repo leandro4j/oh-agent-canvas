@@ -1,4 +1,4 @@
-import { AgentServerClient } from "@openhands/typescript-client/clients";
+import { CloudClient } from "@openhands/typescript-client/clients";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetActiveStoreForTests,
@@ -12,16 +12,6 @@ import {
   withSandboxControlPlaneClient,
 } from "./sandbox-client.api";
 
-vi.mock("@openhands/typescript-client/clients", () => ({
-  AgentServerClient: vi.fn(),
-}));
-
-const get = vi.fn();
-const post = vi.fn();
-const patch = vi.fn();
-const remove = vi.fn();
-const close = vi.fn();
-
 const sandboxBackend: Backend = {
   id: "sandbox",
   name: "Sandbox",
@@ -31,21 +21,10 @@ const sandboxBackend: Backend = {
 };
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.restoreAllMocks();
   __resetActiveStoreForTests();
   setRegisteredBackends([sandboxBackend]);
   setActiveSelection({ backendId: sandboxBackend.id });
-  vi.mocked(AgentServerClient).mockImplementation(
-    function MockAgentServerClient() {
-      return {
-        get,
-        post,
-        patch,
-        delete: remove,
-        close,
-      } as unknown as AgentServerClient;
-    } as unknown as typeof AgentServerClient,
-  );
 });
 
 afterEach(() => {
@@ -55,37 +34,44 @@ afterEach(() => {
 });
 
 describe("Sandbox control-plane client", () => {
-  it("targets the v1 control plane with the backend key", () => {
-    createSandboxControlPlaneClient(sandboxBackend);
+  it("targets the control plane and forces session-key auth", async () => {
+    const request = vi
+      .spyOn(CloudClient.prototype, "request")
+      .mockResolvedValue({ ok: true });
+    const client = createSandboxControlPlaneClient(sandboxBackend);
 
-    expect(AgentServerClient).toHaveBeenCalledWith({
-      host: "https://sandbox.example.test/api/v1",
-      apiKey: "control-plane-key",
-      timeout: 300000,
+    expect(client.host).toBe("https://sandbox.example.test");
+    expect(client.controlPlaneSessionApiKey).toBe("control-plane-key");
+    await client.request({ method: "GET", path: "/api/v1/sandboxes" });
+    expect(request).toHaveBeenCalledWith({
+      method: "GET",
+      path: "/api/v1/sandboxes",
+      authMode: "session-api-key",
+      sessionApiKey: "control-plane-key",
     });
   });
 
   it("closes the typed client even when a lifecycle request fails", async () => {
     const error = Object.assign(new Error("conflict"), { status: 409 });
-    get.mockRejectedValue(error);
+    vi.spyOn(CloudClient.prototype, "request").mockRejectedValue(error);
+    const close = vi.spyOn(CloudClient.prototype, "close");
 
     await expect(
       withSandboxControlPlaneClient((client) =>
-        client.get("/app-conversations/search"),
+        client.get("/api/v1/app-conversations/search"),
       ),
     ).rejects.toBe(error);
 
     expect(close).toHaveBeenCalledOnce();
   });
 
-  it("rejects a non-Sandbox backend before constructing a client", () => {
+  it("rejects a non-Sandbox backend", () => {
     expect(() =>
       createSandboxControlPlaneClient({
         ...sandboxBackend,
         kind: "local",
       }),
     ).toThrow("Sandbox control-plane calls require a sandbox backend.");
-    expect(AgentServerClient).not.toHaveBeenCalled();
   });
 
   it("uses the runtime URL and key for direct calls", () => {

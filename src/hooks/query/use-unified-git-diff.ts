@@ -4,6 +4,7 @@ import AgentServerGitService from "#/api/git-service/agent-server-git-service.ap
 import { useConversationId } from "#/hooks/use-conversation-id";
 import { useActiveConversation } from "#/hooks/query/use-active-conversation";
 import { useActiveBackend } from "#/contexts/active-backend-context";
+import { usesControlPlane } from "#/api/backend-registry/capabilities";
 import { getGitPath } from "#/utils/get-git-path";
 import { GitChangeStatus } from "#/api/open-hands.types";
 
@@ -26,9 +27,7 @@ export const useUnifiedGitDiff = (config: UseUnifiedGitDiffConfig) => {
   const conversationUrl = conversation?.conversation_url;
   const sessionApiKey = conversation?.session_api_key;
   const requiresRuntime =
-    backend.kind === "cloud" ||
-    backend.kind === "sandbox" ||
-    conversation?.sandbox_status != null;
+    usesControlPlane(backend) || conversation?.sandbox_status != null;
   const hasRuntime =
     !requiresRuntime ||
     (conversation?.sandbox_status === "RUNNING" &&

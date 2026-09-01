@@ -6,6 +6,17 @@ import { useNewConversationCommand } from "#/hooks/mutation/use-new-conversation
 import * as telemetry from "#/services/telemetry";
 
 const mockNavigate = vi.fn();
+const activeBackend = vi.hoisted(() => ({ kind: "cloud" }));
+
+vi.mock("#/api/backend-registry/active-store", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("#/api/backend-registry/active-store")
+  >()),
+  getActiveBackend: () => ({
+    backend: { id: activeBackend.kind, kind: activeBackend.kind },
+    orgId: null,
+  }),
+}));
 
 vi.mock("#/context/navigation-context", () => ({
   useNavigation: () => ({
@@ -96,6 +107,7 @@ describe("useNewConversationCommand", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    activeBackend.kind = "cloud";
     captureMock = vi
       .spyOn(telemetry, "trackEvent")
       .mockResolvedValue(undefined);
@@ -200,7 +212,7 @@ describe("useNewConversationCommand", () => {
     });
   });
 
-  it("forwards the active conversation's sandbox_id so /new reuses the same runtime", async () => {
+  it("forwards the active conversation's sandbox_id for Cloud /new", async () => {
     // Arrange
     const readyTask = makeStartTask();
     const createSpy = vi
@@ -220,6 +232,20 @@ describe("useNewConversationCommand", () => {
         sandboxId: "sandbox-abc",
       });
     });
+  });
+
+  it("omits the active sandbox_id for Sandbox /new", async () => {
+    activeBackend.kind = "sandbox";
+    const createSpy = vi
+      .spyOn(AgentServerConversationService, "createConversation")
+      .mockResolvedValue(makeStartTask() as never);
+
+    const { result } = renderHook(() => useNewConversationCommand(), {
+      wrapper,
+    });
+    await result.current.mutateAsync();
+
+    expect(createSpy).toHaveBeenCalledWith({});
   });
 
   it("shows a loading toast and dismisses it on success", async () => {
