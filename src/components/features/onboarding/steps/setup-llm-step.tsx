@@ -9,6 +9,7 @@ import { useSaveLlmProfile } from "#/hooks/mutation/use-save-llm-profile";
 import { useActivateLlmProfile } from "#/hooks/mutation/use-activate-llm-profile";
 import { useApplyOnboardingAgentProfile } from "#/hooks/mutation/use-apply-onboarding-agent-profile";
 import { deriveProfileNameFromModel } from "#/utils/derive-profile-name";
+import { useSettings } from "#/hooks/query/use-settings";
 
 interface SetupLlmStepProps {
   onBack: () => void;
@@ -16,10 +17,9 @@ interface SetupLlmStepProps {
 }
 
 /**
- * Pre-fills the LLM form with the OpenAI GPT-5.6 Sol default
- * (`openai/gpt-5.6-sol`), matching `DEFAULT_SETTINGS.llm_model`. The explicit
- * override marks the model dirty so the Next button persists the suggested
- * default immediately.
+ * Local onboarding keeps the Canvas default for compatibility. Sandbox
+ * onboarding gets its initial model from the control plane at render time;
+ * Sandbox model/provider identity is deployment data, not a Canvas default.
  */
 export const ONBOARDING_DEFAULT_LLM_MODEL = "openai/gpt-5.6-sol";
 
@@ -43,6 +43,7 @@ export const ONBOARDING_DEFAULT_LLM_MODEL = "openai/gpt-5.6-sol";
 export function SetupLlmStep({ onBack, onNext }: SetupLlmStepProps) {
   const { t } = useTranslation("openhands");
   const { backend } = useActiveBackend();
+  const { data: settings } = useSettings();
   const isLocalBackend = backend.kind === "local";
   const isProfileBackend =
     backend.kind === "local" || backend.kind === "sandbox";
@@ -52,6 +53,10 @@ export function SetupLlmStep({ onBack, onNext }: SetupLlmStepProps) {
   const [saveControl, setSaveControl] =
     React.useState<SdkSectionSaveControl | null>(null);
   const [isFinalizing, setIsFinalizing] = React.useState(false);
+  const onboardingModel =
+    backend.kind === "sandbox"
+      ? (settings?.llm_model ?? "")
+      : ONBOARDING_DEFAULT_LLM_MODEL;
 
   // On profile-backed runtimes the LLM profiles list is the user-facing source of
   // truth; without this step the form save only updates agent_settings and
@@ -156,7 +161,7 @@ export function SetupLlmStep({ onBack, onNext }: SetupLlmStepProps) {
           hideSaveButton
           suppressSuccessToast
           initialValueOverrides={{
-            "llm.model": ONBOARDING_DEFAULT_LLM_MODEL,
+            "llm.model": onboardingModel,
           }}
           onSaveSuccess={handleSaveSuccess}
           onSaveControlChange={setSaveControl}

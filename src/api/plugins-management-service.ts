@@ -52,8 +52,8 @@ interface PluginsManagementClient {
   ): Promise<{ message: string; plugin: InstalledPluginInfo }>;
 }
 
-function isCloudBackend(): boolean {
-  return getActiveBackend().backend.kind === "cloud";
+function isLocalBackend(): boolean {
+  return getActiveBackend().backend.kind === "local";
 }
 
 function getManagementClient(): PluginsManagementClient {
@@ -75,7 +75,7 @@ function getManagementClient(): PluginsManagementClient {
  */
 class PluginsManagementService {
   static async listInstalledPlugins(): Promise<InstalledPluginInfo[]> {
-    if (isCloudBackend()) {
+    if (!isLocalBackend()) {
       return [];
     }
 
@@ -92,7 +92,7 @@ class PluginsManagementService {
   static async installPlugin(
     request: InstallPluginRequest,
   ): Promise<InstalledPluginInfo> {
-    if (isCloudBackend()) {
+    if (!isLocalBackend()) {
       throw new Error(
         "Installing plugins is only available on a local backend.",
       );
@@ -104,7 +104,7 @@ class PluginsManagementService {
     name: string,
     enabled: boolean,
   ): Promise<{ name: string; enabled: boolean }> {
-    if (isCloudBackend()) {
+    if (!isLocalBackend()) {
       throw new Error(
         "Enabling and disabling plugins is only available on a local backend.",
       );
@@ -113,7 +113,7 @@ class PluginsManagementService {
   }
 
   static async uninstallPlugin(name: string): Promise<{ message: string }> {
-    if (isCloudBackend()) {
+    if (!isLocalBackend()) {
       throw new Error(
         "Uninstalling plugins is only available on a local backend.",
       );
@@ -124,7 +124,7 @@ class PluginsManagementService {
   static async refreshPlugin(
     name: string,
   ): Promise<{ message: string; plugin: InstalledPluginInfo }> {
-    if (isCloudBackend()) {
+    if (!isLocalBackend()) {
       throw new Error(
         "Refreshing plugins is only available on a local backend.",
       );

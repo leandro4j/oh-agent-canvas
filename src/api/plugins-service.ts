@@ -74,7 +74,7 @@ class PluginsService {
    * cloud plugins-marketplace endpoint yet (tracked as a follow-up ticket).
    */
   static async getPluginsMarketplace(): Promise<MarketplacePlugin[]> {
-    if (getActiveBackend().backend.kind === "cloud") {
+    if (getActiveBackend().backend.kind !== "local") {
       return [];
     }
 
@@ -102,7 +102,7 @@ class PluginsService {
    * catalog) rather than throwing.
    */
   static async getLocalPlugins(): Promise<LocalPlugin[]> {
-    if (getActiveBackend().backend.kind === "cloud") {
+    if (getActiveBackend().backend.kind !== "local") {
       return [];
     }
 
@@ -128,7 +128,7 @@ class PluginsService {
     basePath: string,
     relativePath: string,
   ): Promise<PluginFileContent> {
-    if (getActiveBackend().backend.kind === "cloud") {
+    if (getActiveBackend().backend.kind !== "local") {
       throw new Error(
         "Reading plugin files is only available on a local backend.",
       );

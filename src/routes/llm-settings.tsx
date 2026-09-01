@@ -170,6 +170,7 @@ export function LlmSettingsScreen({
 
   const { backend } = useActiveBackend();
   const isCloud = backend.kind === "cloud";
+  const supportsSubscriptionAuth = backend.kind === "local";
 
   const { data: providerConnections } = useProviderConnections();
   const connectionOptions = React.useMemo(
@@ -184,17 +185,21 @@ export function LlmSettingsScreen({
   const persistedLlmSettings = settings?.agent_settings?.llm as
     | Record<string, unknown>
     | undefined;
-  const initialAuthType = resolveLlmAuthType(
-    initialValueOverrides?.[LLM_AUTH_TYPE_KEY] ??
-      persistedLlmSettings?.auth_type,
-  );
+  const initialAuthType = supportsSubscriptionAuth
+    ? resolveLlmAuthType(
+        initialValueOverrides?.[LLM_AUTH_TYPE_KEY] ??
+          persistedLlmSettings?.auth_type,
+      )
+    : LLM_AUTH_TYPE_API_KEY;
   const [enableSubscriptionModels, setEnableSubscriptionModels] =
     React.useState(initialAuthType === LLM_AUTH_TYPE_SUBSCRIPTION);
   const {
     data: subscriptionModels,
     isLoading: isSubscriptionModelsLoading,
     isFetching: isSubscriptionModelsFetching,
-  } = useOpenAISubscriptionModels({ enabled: enableSubscriptionModels });
+  } = useOpenAISubscriptionModels({
+    enabled: supportsSubscriptionAuth && enableSubscriptionModels,
+  });
   const isWaitingForSubscriptionModels =
     enableSubscriptionModels &&
     !subscriptionModels &&
@@ -203,14 +208,21 @@ export function LlmSettingsScreen({
   const lastSubscriptionModelRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
-    if (initialAuthType === LLM_AUTH_TYPE_SUBSCRIPTION) {
+    if (
+      supportsSubscriptionAuth &&
+      initialAuthType === LLM_AUTH_TYPE_SUBSCRIPTION
+    ) {
       setEnableSubscriptionModels(true);
+    } else if (!supportsSubscriptionAuth) {
+      setEnableSubscriptionModels(false);
     }
-  }, [initialAuthType]);
+  }, [initialAuthType, supportsSubscriptionAuth]);
 
   const defaultModel = String(
-    (DEFAULT_SETTINGS.agent_settings?.llm as Record<string, unknown>)?.model ??
-      "",
+    backend.kind === "sandbox"
+      ? (settings?.llm_model ?? "")
+      : ((DEFAULT_SETTINGS.agent_settings?.llm as Record<string, unknown>)
+          ?.model ?? ""),
   );
 
   const getInitialView = React.useCallback(
@@ -243,7 +255,9 @@ export function LlmSettingsScreen({
           ? values["llm.base_url"]
           : "";
       const showOpenHandsApiKeyHelp = isOpenHandsProviderModel(modelValue);
-      const authType = resolveLlmAuthType(values[LLM_AUTH_TYPE_KEY]);
+      const authType = supportsSubscriptionAuth
+        ? resolveLlmAuthType(values[LLM_AUTH_TYPE_KEY])
+        : LLM_AUTH_TYPE_API_KEY;
       const isSubscriptionAuth = authType === LLM_AUTH_TYPE_SUBSCRIPTION;
       // On cloud the OpenHands provider is backed by a server-minted LLM key,
       // so the inline API key / base URL inputs are not user-supplied. Local
@@ -359,6 +373,10 @@ export function LlmSettingsScreen({
       );
 
       const handleAuthTypeChange = (selectedKey: React.Key | null) => {
+        if (!supportsSubscriptionAuth) {
+          onChange(LLM_AUTH_TYPE_KEY, LLM_AUTH_TYPE_API_KEY);
+          return;
+        }
         const nextAuthType =
           selectedKey === LLM_AUTH_TYPE_SUBSCRIPTION
             ? LLM_AUTH_TYPE_SUBSCRIPTION
@@ -401,10 +419,14 @@ export function LlmSettingsScreen({
               key: LLM_AUTH_TYPE_API_KEY,
               label: t(I18nKey.SETTINGS$LLM_AUTH_TYPE_API_KEY),
             },
-            {
-              key: LLM_AUTH_TYPE_SUBSCRIPTION,
-              label: t(I18nKey.SETTINGS$LLM_AUTH_TYPE_SUBSCRIPTION),
-            },
+            ...(supportsSubscriptionAuth
+              ? [
+                  {
+                    key: LLM_AUTH_TYPE_SUBSCRIPTION,
+                    label: t(I18nKey.SETTINGS$LLM_AUTH_TYPE_SUBSCRIPTION),
+                  },
+                ]
+              : []),
           ]}
           selectedKey={authType}
           isClearable={false}
@@ -557,6 +579,7 @@ export function LlmSettingsScreen({
       embedded,
       isCloud,
       isWaitingForSubscriptionModels,
+      supportsSubscriptionAuth,
       settings?.llm_api_key_set,
       subscriptionModels,
       t,
@@ -579,7 +602,9 @@ export function LlmSettingsScreen({
         (defaultPayload.agent_settings_diff as Record<string, unknown>) ?? {},
       );
       const llm = (agentSettings.llm ?? {}) as Record<string, unknown>;
-      const authType = resolveLlmAuthType(context.values[LLM_AUTH_TYPE_KEY]);
+      const authType = supportsSubscriptionAuth
+        ? resolveLlmAuthType(context.values[LLM_AUTH_TYPE_KEY])
+        : LLM_AUTH_TYPE_API_KEY;
 
       if (authType === LLM_AUTH_TYPE_SUBSCRIPTION) {
         llm.auth_type = LLM_AUTH_TYPE_SUBSCRIPTION;
@@ -601,7 +626,7 @@ export function LlmSettingsScreen({
         delete llm.api_key;
         delete llm.base_url;
       } else {
-        if (context.dirty[LLM_AUTH_TYPE_KEY]) {
+        if (!supportsSubscriptionAuth || context.dirty[LLM_AUTH_TYPE_KEY]) {
           llm.auth_type = LLM_AUTH_TYPE_API_KEY;
           llm.subscription_vendor = null;
         }
@@ -623,7 +648,7 @@ export function LlmSettingsScreen({
       agentSettings.llm = llm;
       return { agent_settings_diff: agentSettings };
     },
-    [schema, subscriptionModels, isCloud],
+    [schema, subscriptionModels, isCloud, supportsSubscriptionAuth],
   );
 
   return (

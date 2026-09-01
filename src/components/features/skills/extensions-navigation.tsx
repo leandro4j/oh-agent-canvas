@@ -15,8 +15,8 @@ import { isNoBackend } from "#/api/backend-registry/active-store";
 
 /** Only the Skills item points to a cloud-hosted page today. */
 const CLOUD_LINKED_EXTENSION_PATH = "/skills";
-/** Backend-installed artifacts are not available on Cloud backends yet. */
-const CLOUD_HIDDEN_EXTENSION_PATHS = new Set(["/plugins", "/extensions"]);
+/** Backend-installed artifacts are only available on a local agent-server. */
+const NON_LOCAL_HIDDEN_EXTENSION_PATHS = new Set(["/plugins", "/extensions"]);
 
 interface ExtensionNavItem {
   to: string;
@@ -75,6 +75,7 @@ export function ExtensionsNavigation() {
   const { active } = useActiveBackendContext();
   const { backend } = active;
   const isCloudBackend = !isNoBackend(backend) && backend.kind === "cloud";
+  const isNonLocalBackend = !isNoBackend(backend) && backend.kind !== "local";
 
   return (
     <aside
@@ -87,7 +88,9 @@ export function ExtensionsNavigation() {
       <div className="flex flex-col gap-0.5 pt-0.5">
         {EXTENSIONS_NAV_ITEMS.filter(
           (item) =>
-            !(CLOUD_HIDDEN_EXTENSION_PATHS.has(item.to) && isCloudBackend),
+            !(
+              NON_LOCAL_HIDDEN_EXTENSION_PATHS.has(item.to) && isNonLocalBackend
+            ),
         ).map((item) => {
           const isCloudSkillsLink =
             item.to === CLOUD_LINKED_EXTENSION_PATH && isCloudBackend;

@@ -1,5 +1,6 @@
 import { AgentServerClient } from "@openhands/typescript-client/clients";
 import { getAgentServerClientOptions } from "./agent-server-client-options";
+import { getActiveBackend } from "./backend-registry/active-store";
 import {
   OPENAI_SUBSCRIPTION_DEVICE_POLL_PATH,
   OPENAI_SUBSCRIPTION_DEVICE_START_PATH,
@@ -80,6 +81,11 @@ async function requestSubscriptionEndpoint(
   path: string,
   options: SubscriptionRequestOptions = {},
 ): Promise<unknown> {
+  if (getActiveBackend().backend.kind !== "local") {
+    throw new Error(
+      "ChatGPT subscription authentication is only available on a local backend.",
+    );
+  }
   const { host, apiKey } = getAgentServerClientOptions();
   const client = new AgentServerClient({ host, apiKey });
   try {

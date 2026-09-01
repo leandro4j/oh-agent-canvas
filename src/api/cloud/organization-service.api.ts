@@ -23,11 +23,10 @@ function normalizeResult(
 }
 
 function resolveBackend(backend?: Backend): Backend {
-  if (backend) return backend;
-  const active = getActiveBackend().backend;
+  const active = backend ?? getActiveBackend().backend;
   if (active.kind !== "cloud") {
     throw new Error(
-      "Cloud organization calls require a cloud backend. Active backend is local.",
+      `Cloud organization calls require a cloud backend. Backend is ${active.kind}.`,
     );
   }
   return active;

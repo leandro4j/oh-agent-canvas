@@ -9,6 +9,7 @@ import { useActivateAgentProfile } from "#/hooks/mutation/use-activate-agent-pro
 import { useCanManageOrgProfiles } from "#/hooks/use-can-manage-org-profiles";
 import { displaySuccessToast } from "#/utils/custom-toast-handlers";
 import { I18nKey } from "#/i18n/declaration";
+import { useActiveBackend } from "#/contexts/active-backend-context";
 
 interface AgentProfilesManagerProps {
   onAddProfile?: () => void;
@@ -22,10 +23,12 @@ export function AgentProfilesManager({
   const { t } = useTranslation("openhands");
   const { data, isLoading, error } = useAgentProfiles();
   const activateProfile = useActivateAgentProfile();
+  const { backend } = useActiveBackend();
   // Cloud members are view-only; only owners/admins (and all local users) may
   // add, edit, delete, or activate agent profiles (org-scoped, same permission
   // as LLM profiles). Mirrors LlmProfilesManager.
-  const canManage = useCanManageOrgProfiles();
+  const canManageOrgProfiles = useCanManageOrgProfiles();
+  const canManage = backend.kind !== "sandbox" && canManageOrgProfiles;
   const [profileToDelete, setProfileToDelete] =
     useState<AgentProfileSummary | null>(null);
 

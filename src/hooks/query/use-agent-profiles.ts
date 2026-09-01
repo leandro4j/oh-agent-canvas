@@ -22,6 +22,7 @@ interface UseAgentProfilesOptions {
  */
 export function useAgentProfiles(options: UseAgentProfilesOptions = {}) {
   const { backend, orgId } = useActiveBackend();
+  const supportsAgentProfiles = backend.kind !== "sandbox";
 
   return useQuery({
     // Backend identity isolates the cache across backend/org switches.
@@ -29,7 +30,7 @@ export function useAgentProfiles(options: UseAgentProfilesOptions = {}) {
     queryFn: AgentProfilesService.listProfiles,
     ...CONFIG_CACHE_OPTIONS,
     ...AGENT_PROFILES_RETRY_OPTIONS,
-    enabled: options.enabled ?? true,
+    enabled: supportsAgentProfiles && (options.enabled ?? true),
     meta: { disableToast: true },
   });
 }

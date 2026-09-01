@@ -17,6 +17,7 @@ const CANVAS_EXTENSIONS_BASE_PATH = "/api/canvas-extensions";
 export type CanvasExtensionsUnsupportedReason =
   | "no-backend"
   | "cloud-backend"
+  | "sandbox-backend"
   | "missing-api";
 
 export class CanvasExtensionsUnsupportedError extends Error {
@@ -28,7 +29,9 @@ export class CanvasExtensionsUnsupportedError extends Error {
         ? "Add an Agent Server backend to use Canvas Extensions."
         : reason === "cloud-backend"
           ? "Canvas Extensions are not available on Cloud backends yet."
-          : "This Agent Server does not support Canvas Extensions yet. Upgrade the backend and try again.";
+          : reason === "sandbox-backend"
+            ? "Canvas Extensions are only available on local Agent Server backends."
+            : "This Agent Server does not support Canvas Extensions yet. Upgrade the backend and try again.";
     super(message);
     this.name = "CanvasExtensionsUnsupportedError";
     this.reason = reason;
@@ -55,6 +58,9 @@ function requireSupportedBackend(): void {
   if (backend.kind === "cloud") {
     throw new CanvasExtensionsUnsupportedError("cloud-backend");
   }
+  if (backend.kind === "sandbox") {
+    throw new CanvasExtensionsUnsupportedError("sandbox-backend");
+  }
 }
 
 function getClient(): AgentServerClient {
@@ -68,6 +74,9 @@ function getClientForBackend(backend: Backend): AgentServerClient {
   }
   if (backend.kind === "cloud") {
     throw new CanvasExtensionsUnsupportedError("cloud-backend");
+  }
+  if (backend.kind === "sandbox") {
+    throw new CanvasExtensionsUnsupportedError("sandbox-backend");
   }
   return new AgentServerClient({
     host: backend.host,
