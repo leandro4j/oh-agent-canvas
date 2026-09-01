@@ -10,6 +10,7 @@ import { useCanManageOrgProfiles } from "#/hooks/use-can-manage-org-profiles";
 import { displaySuccessToast } from "#/utils/custom-toast-handlers";
 import { I18nKey } from "#/i18n/declaration";
 import { useActiveBackend } from "#/contexts/active-backend-context";
+import { supportsBackendFeature } from "#/api/backend-registry/capabilities";
 
 interface AgentProfilesManagerProps {
   onAddProfile?: () => void;
@@ -28,7 +29,8 @@ export function AgentProfilesManager({
   // add, edit, delete, or activate agent profiles (org-scoped, same permission
   // as LLM profiles). Mirrors LlmProfilesManager.
   const canManageOrgProfiles = useCanManageOrgProfiles();
-  const canManage = backend.kind !== "sandbox" && canManageOrgProfiles;
+  const canManage =
+    supportsBackendFeature(backend, "agentProfiles") && canManageOrgProfiles;
   const [profileToDelete, setProfileToDelete] =
     useState<AgentProfileSummary | null>(null);
 

@@ -8,7 +8,7 @@ const clearPendingCloudTelemetryConsentMock = vi.fn();
 const setTelemetryConsentMock = vi.fn();
 const state = {
   backendId: "backend-1",
-  backendKind: "cloud" as "cloud" | "local",
+  backendKind: "cloud" as "cloud" | "local" | "sandbox",
   pendingConsent: null as "granted" | "denied" | null,
   isSavingSettings: false,
 };
@@ -151,6 +151,18 @@ describe("useSyncTelemetryConsent", () => {
     state.pendingConsent = "granted";
     useSettingsMock.mockReturnValue({
       data: { user_consents_to_analytics: null },
+    });
+
+    renderHook(() => useSyncTelemetryConsent());
+
+    expect(saveSettingsMock).not.toHaveBeenCalled();
+    expect(setTelemetryConsentMock).not.toHaveBeenCalled();
+  });
+
+  it("ignores Sandbox analytics settings", () => {
+    state.backendKind = "sandbox";
+    useSettingsMock.mockReturnValue({
+      data: { user_consents_to_analytics: true },
     });
 
     renderHook(() => useSyncTelemetryConsent());

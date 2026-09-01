@@ -241,6 +241,10 @@ const normalizeSandboxSettingsResponse = (
   const llm = isRecord(agentSettings.llm)
     ? ({ ...agentSettings.llm } as Record<string, SettingsValue>)
     : {};
+  // Sandbox owns the credential and may return a null/masked compatibility
+  // value in the nested SDK shape. Never forward that display value into a
+  // conversation or a later settings write.
+  delete llm.api_key;
   if (
     typeof response.llm_model === "string" &&
     (typeof llm.model !== "string" || llm.model.trim().length === 0)
@@ -253,7 +257,11 @@ const normalizeSandboxSettingsResponse = (
   ) {
     llm.base_url = response.llm_base_url;
   }
-  if (Object.keys(llm).length > 0) agentSettings.llm = llm;
+  if (Object.keys(llm).length > 0) {
+    agentSettings.llm = llm;
+  } else {
+    delete agentSettings.llm;
+  }
 
   const condenser = isRecord(agentSettings.condenser)
     ? ({ ...agentSettings.condenser } as Record<string, SettingsValue>)

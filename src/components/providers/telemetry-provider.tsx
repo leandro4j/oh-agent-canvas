@@ -7,6 +7,8 @@ import {
   initializePostHogClient,
   type TelemetryConfiguration,
 } from "#/services/telemetry";
+import { useActiveBackend } from "#/contexts/active-backend-context";
+import { supportsBackendFeature } from "#/api/backend-registry/capabilities";
 
 const POSTHOG_BOOTSTRAP_KEY = "posthog_bootstrap";
 
@@ -75,8 +77,10 @@ export function TelemetryProvider({
   children: React.ReactNode;
   config?: TelemetryConfiguration;
 }) {
+  const { backend } = useActiveBackend();
   const configuredBootstrap = React.useRef(false);
-  const analyticsEnabled = config !== false;
+  const analyticsEnabled =
+    config !== false && supportsBackendFeature(backend, "telemetry");
   const apiKey = config === false ? undefined : config.apiKey;
   const apiHost = config === false ? undefined : config.apiHost;
   const uiHost = config === false ? undefined : config.uiHost;

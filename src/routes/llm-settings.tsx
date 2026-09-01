@@ -35,6 +35,7 @@ import {
 import { useOpenAISubscriptionModels } from "#/hooks/query/use-llm-subscription-models";
 import { useProviderConnections } from "#/hooks/query/use-provider-connections";
 import { useActiveBackend } from "#/contexts/active-backend-context";
+import { supportsBackendFeature } from "#/api/backend-registry/capabilities";
 import {
   FREE_OPENHANDS_MODEL_NOTE,
   isFreeOpenHandsModel,
@@ -170,7 +171,10 @@ export function LlmSettingsScreen({
 
   const { backend } = useActiveBackend();
   const isCloud = backend.kind === "cloud";
-  const supportsSubscriptionAuth = backend.kind === "local";
+  const supportsSubscriptionAuth = supportsBackendFeature(
+    backend,
+    "llmSubscriptionAuth",
+  );
 
   const { data: providerConnections } = useProviderConnections();
   const connectionOptions = React.useMemo(
@@ -191,14 +195,18 @@ export function LlmSettingsScreen({
           persistedLlmSettings?.auth_type,
       )
     : LLM_AUTH_TYPE_API_KEY;
-  const [enableSubscriptionModels, setEnableSubscriptionModels] =
-    React.useState(initialAuthType === LLM_AUTH_TYPE_SUBSCRIPTION);
+  const [subscriptionModelsRequested, setSubscriptionModelsRequested] =
+    React.useState(false);
+  const enableSubscriptionModels =
+    supportsSubscriptionAuth &&
+    (subscriptionModelsRequested ||
+      initialAuthType === LLM_AUTH_TYPE_SUBSCRIPTION);
   const {
     data: subscriptionModels,
     isLoading: isSubscriptionModelsLoading,
     isFetching: isSubscriptionModelsFetching,
   } = useOpenAISubscriptionModels({
-    enabled: supportsSubscriptionAuth && enableSubscriptionModels,
+    enabled: enableSubscriptionModels,
   });
   const isWaitingForSubscriptionModels =
     enableSubscriptionModels &&
@@ -206,17 +214,6 @@ export function LlmSettingsScreen({
     (isSubscriptionModelsLoading || isSubscriptionModelsFetching);
   const lastApiKeyModelRef = React.useRef<string | null>(null);
   const lastSubscriptionModelRef = React.useRef<string | null>(null);
-
-  React.useEffect(() => {
-    if (
-      supportsSubscriptionAuth &&
-      initialAuthType === LLM_AUTH_TYPE_SUBSCRIPTION
-    ) {
-      setEnableSubscriptionModels(true);
-    } else if (!supportsSubscriptionAuth) {
-      setEnableSubscriptionModels(false);
-    }
-  }, [initialAuthType, supportsSubscriptionAuth]);
 
   const defaultModel = String(
     backend.kind === "sandbox"
@@ -384,7 +381,7 @@ export function LlmSettingsScreen({
         onChange(LLM_AUTH_TYPE_KEY, nextAuthType);
 
         if (nextAuthType === LLM_AUTH_TYPE_SUBSCRIPTION) {
-          setEnableSubscriptionModels(true);
+          setSubscriptionModelsRequested(true);
           if (modelValue && !subscriptionModels?.includes(modelValue)) {
             lastApiKeyModelRef.current = modelValue;
           }

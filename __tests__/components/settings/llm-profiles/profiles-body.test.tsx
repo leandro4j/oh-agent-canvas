@@ -43,6 +43,7 @@ const defaultProps = {
   profiles: mockProfiles,
   active: "gpt-4-profile",
   canManage: true,
+  canDuplicate: true,
   onActivate: vi.fn(),
   onEdit: vi.fn(),
   onRename: vi.fn(),

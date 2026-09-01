@@ -1,5 +1,6 @@
 import { PluginsClient } from "@openhands/typescript-client/clients";
 import { getActiveBackend } from "./backend-registry/active-store";
+import { supportsBackendFeature } from "./backend-registry/capabilities";
 import { getAgentServerClientOptions } from "./agent-server-client-options";
 import type { PluginBundledSkill } from "./plugins-service";
 
@@ -52,8 +53,8 @@ interface PluginsManagementClient {
   ): Promise<{ message: string; plugin: InstalledPluginInfo }>;
 }
 
-function isLocalBackend(): boolean {
-  return getActiveBackend().backend.kind === "local";
+function supportsPlugins(): boolean {
+  return supportsBackendFeature(getActiveBackend().backend, "plugins");
 }
 
 function getManagementClient(): PluginsManagementClient {
@@ -75,7 +76,7 @@ function getManagementClient(): PluginsManagementClient {
  */
 class PluginsManagementService {
   static async listInstalledPlugins(): Promise<InstalledPluginInfo[]> {
-    if (!isLocalBackend()) {
+    if (!supportsPlugins()) {
       return [];
     }
 
@@ -92,7 +93,7 @@ class PluginsManagementService {
   static async installPlugin(
     request: InstallPluginRequest,
   ): Promise<InstalledPluginInfo> {
-    if (!isLocalBackend()) {
+    if (!supportsPlugins()) {
       throw new Error(
         "Installing plugins is only available on a local backend.",
       );
@@ -104,7 +105,7 @@ class PluginsManagementService {
     name: string,
     enabled: boolean,
   ): Promise<{ name: string; enabled: boolean }> {
-    if (!isLocalBackend()) {
+    if (!supportsPlugins()) {
       throw new Error(
         "Enabling and disabling plugins is only available on a local backend.",
       );
@@ -113,7 +114,7 @@ class PluginsManagementService {
   }
 
   static async uninstallPlugin(name: string): Promise<{ message: string }> {
-    if (!isLocalBackend()) {
+    if (!supportsPlugins()) {
       throw new Error(
         "Uninstalling plugins is only available on a local backend.",
       );
@@ -124,7 +125,7 @@ class PluginsManagementService {
   static async refreshPlugin(
     name: string,
   ): Promise<{ message: string; plugin: InstalledPluginInfo }> {
-    if (!isLocalBackend()) {
+    if (!supportsPlugins()) {
       throw new Error(
         "Refreshing plugins is only available on a local backend.",
       );

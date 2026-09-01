@@ -5,6 +5,7 @@ import {
   getActiveBackend,
   isNoBackend,
 } from "#/api/backend-registry/active-store";
+import { supportsBackendFeature } from "#/api/backend-registry/capabilities";
 import type { Backend } from "#/api/backend-registry/types";
 import type {
   CanvasExtensionAgentServerRequest,
@@ -58,7 +59,7 @@ function requireSupportedBackend(): void {
   if (backend.kind === "cloud") {
     throw new CanvasExtensionsUnsupportedError("cloud-backend");
   }
-  if (backend.kind === "sandbox") {
+  if (!supportsBackendFeature(backend, "canvasExtensions")) {
     throw new CanvasExtensionsUnsupportedError("sandbox-backend");
   }
 }
@@ -75,7 +76,7 @@ function getClientForBackend(backend: Backend): AgentServerClient {
   if (backend.kind === "cloud") {
     throw new CanvasExtensionsUnsupportedError("cloud-backend");
   }
-  if (backend.kind === "sandbox") {
+  if (!supportsBackendFeature(backend, "canvasExtensions")) {
     throw new CanvasExtensionsUnsupportedError("sandbox-backend");
   }
   return new AgentServerClient({

@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import PluginsService, { type LocalPlugin } from "#/api/plugins-service";
+import { supportsBackendFeature } from "#/api/backend-registry/capabilities";
 import { useActiveBackend } from "#/contexts/active-backend-context";
 import { PLUGINS_QUERY_KEYS } from "./query-keys";
 
@@ -15,7 +16,7 @@ export const useLocalPlugins = () => {
   return useQuery<LocalPlugin[]>({
     queryKey: PLUGINS_QUERY_KEYS.local,
     queryFn: () => PluginsService.getLocalPlugins(),
-    enabled: backend.kind === "local",
+    enabled: supportsBackendFeature(backend, "plugins"),
     staleTime: 1000 * 60 * 10, // 10 minutes
     refetchOnWindowFocus: false,
   });

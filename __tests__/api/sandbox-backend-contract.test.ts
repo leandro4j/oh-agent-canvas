@@ -13,6 +13,10 @@ import {
   getCurrentCloudApiKey,
 } from "#/api/cloud/organization-service.api";
 import { buildStartConversationRequest } from "#/api/agent-server-adapter";
+import LLMSubscriptionService from "#/api/llm-subscription-service";
+import PluginsManagementService from "#/api/plugins-management-service";
+import PluginsService from "#/api/plugins-service";
+import CanvasExtensionsService from "#/api/canvas-extensions-service";
 import { DEFAULT_SETTINGS } from "#/services/settings";
 import {
   __resetActiveStoreForTests,
@@ -121,6 +125,26 @@ describe("Sandbox backend control-plane contracts", () => {
       },
       disabled_skills: ["skill-to-disable"],
     });
+  });
+
+  it("does not copy a nested redacted LLM key into conversation settings", async () => {
+    get.mockResolvedValueOnce({
+      agent_settings: {
+        llm: {
+          model: "runtime/provider-model",
+          api_key: "**********",
+        },
+      },
+      conversation_settings: {},
+      llm_api_key_set: true,
+    });
+
+    const result = await SettingsService.getSettingsForConversation();
+
+    expect(result.agentSettings.llm).toEqual({
+      model: "runtime/provider-model",
+    });
+    expect(result.secretsEncrypted).toBe(false);
   });
 
   it("keeps LLM profiles, secrets, skills, and model metadata on the control plane", async () => {
@@ -246,6 +270,21 @@ describe("Sandbox backend control-plane contracts", () => {
     await expect(
       getCloudOrganizationMe("org-1", sandboxBackend),
     ).rejects.toThrow("require a cloud backend");
+    expect(AgentServerClient).not.toHaveBeenCalled();
+  });
+
+  it("blocks unsupported subscription, plugin, and Canvas Extension calls", async () => {
+    await expect(LLMSubscriptionService.getOpenAIStatus()).rejects.toThrow(
+      "only available on a local backend",
+    );
+    await expect(PluginsService.getPluginsMarketplace()).resolves.toEqual([]);
+    await expect(PluginsService.getLocalPlugins()).resolves.toEqual([]);
+    await expect(
+      PluginsManagementService.listInstalledPlugins(),
+    ).resolves.toEqual([]);
+    await expect(CanvasExtensionsService.listInstalled()).rejects.toMatchObject(
+      { reason: "sandbox-backend" },
+    );
     expect(AgentServerClient).not.toHaveBeenCalled();
   });
 });

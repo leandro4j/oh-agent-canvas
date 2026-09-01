@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import AgentProfilesService from "#/api/agent-profiles-service/agent-profiles-service.api";
+import { supportsBackendFeature } from "#/api/backend-registry/capabilities";
 import { useActiveBackend } from "#/contexts/active-backend-context";
 import {
   CONFIG_CACHE_OPTIONS,
@@ -22,7 +23,10 @@ interface UseAgentProfilesOptions {
  */
 export function useAgentProfiles(options: UseAgentProfilesOptions = {}) {
   const { backend, orgId } = useActiveBackend();
-  const supportsAgentProfiles = backend.kind !== "sandbox";
+  const supportsAgentProfiles = supportsBackendFeature(
+    backend,
+    "agentProfiles",
+  );
 
   return useQuery({
     // Backend identity isolates the cache across backend/org switches.

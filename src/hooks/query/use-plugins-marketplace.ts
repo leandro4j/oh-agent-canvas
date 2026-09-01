@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import PluginsService, { type MarketplacePlugin } from "#/api/plugins-service";
+import { supportsBackendFeature } from "#/api/backend-registry/capabilities";
 import { useActiveBackend } from "#/contexts/active-backend-context";
 
 /**
@@ -13,7 +14,7 @@ export const usePluginsMarketplace = () => {
   return useQuery<MarketplacePlugin[]>({
     queryKey: ["plugins-marketplace"],
     queryFn: () => PluginsService.getPluginsMarketplace(),
-    enabled: backend.kind === "local",
+    enabled: supportsBackendFeature(backend, "plugins"),
     staleTime: 1000 * 60 * 10, // 10 minutes – catalog rarely changes
     refetchOnWindowFocus: false,
   });

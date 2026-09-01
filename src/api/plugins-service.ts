@@ -3,6 +3,7 @@ import {
   PluginsClient,
 } from "@openhands/typescript-client/clients";
 import { getActiveBackend } from "./backend-registry/active-store";
+import { supportsBackendFeature } from "./backend-registry/capabilities";
 import { getAgentServerClientOptions } from "./agent-server-client-options";
 
 /** Summary of a skill bundled in a plugin (agent-server `PluginSkillSummary`). */
@@ -74,7 +75,7 @@ class PluginsService {
    * cloud plugins-marketplace endpoint yet (tracked as a follow-up ticket).
    */
   static async getPluginsMarketplace(): Promise<MarketplacePlugin[]> {
-    if (getActiveBackend().backend.kind !== "local") {
+    if (!supportsBackendFeature(getActiveBackend().backend, "plugins")) {
       return [];
     }
 
@@ -102,7 +103,7 @@ class PluginsService {
    * catalog) rather than throwing.
    */
   static async getLocalPlugins(): Promise<LocalPlugin[]> {
-    if (getActiveBackend().backend.kind !== "local") {
+    if (!supportsBackendFeature(getActiveBackend().backend, "plugins")) {
       return [];
     }
 
@@ -128,7 +129,7 @@ class PluginsService {
     basePath: string,
     relativePath: string,
   ): Promise<PluginFileContent> {
-    if (getActiveBackend().backend.kind !== "local") {
+    if (!supportsBackendFeature(getActiveBackend().backend, "plugins")) {
       throw new Error(
         "Reading plugin files is only available on a local backend.",
       );

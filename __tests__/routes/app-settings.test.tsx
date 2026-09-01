@@ -9,7 +9,7 @@ import { Settings } from "#/types/settings";
 import ProfilesService from "#/api/profiles-service/profiles-service.api";
 
 const activeBackendState = vi.hoisted(() => ({
-  kind: "local" as "local" | "cloud",
+  kind: "local" as "local" | "cloud" | "sandbox",
 }));
 
 vi.mock("#/contexts/active-backend-context", () => ({
@@ -120,6 +120,32 @@ describe("AppSettingsScreen", () => {
     await user.click(
       await screen.findByTestId("enable-sound-notifications-switch"),
     );
+    await user.click(screen.getByTestId("submit-button"));
+
+    await waitFor(() => {
+      expect(saveSettingsSpy).toHaveBeenCalledWith(
+        expect.not.objectContaining({
+          user_consents_to_analytics: expect.anything(),
+        }),
+      );
+    });
+  });
+
+  it("does not expose or persist analytics consent for Sandbox", async () => {
+    activeBackendState.kind = "sandbox";
+    const saveSettingsSpy = vi
+      .spyOn(SettingsService, "saveSettings")
+      .mockResolvedValue(true);
+    vi.spyOn(SettingsService, "getSettings").mockResolvedValue(buildSettings());
+
+    renderAppSettingsScreen();
+
+    const user = userEvent.setup();
+    await screen.findByTestId("enable-sound-notifications-switch");
+    expect(
+      screen.queryByTestId("enable-analytics-switch"),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByTestId("enable-sound-notifications-switch"));
     await user.click(screen.getByTestId("submit-button"));
 
     await waitFor(() => {
