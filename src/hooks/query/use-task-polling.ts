@@ -160,9 +160,11 @@ export const useTaskPollingController = () => {
     }
 
     handledReadyTaskIdRef.current = taskId;
-    if (getActiveBackend().backend.kind === "cloud") {
-      trackCloudConversationReady(taskId, appConversationId);
-    }
+    trackCloudConversationReady(
+      taskId,
+      appConversationId,
+      getActiveBackend().backend.kind,
+    );
     storeTaskPlugins(task, appConversationId);
 
     void (async () => {

@@ -159,7 +159,7 @@ describe("useSyncTelemetryConsent", () => {
     expect(setTelemetryConsentMock).not.toHaveBeenCalled();
   });
 
-  it("ignores Sandbox analytics settings", () => {
+  it("applies Sandbox analytics settings", () => {
     state.backendKind = "sandbox";
     useSettingsMock.mockReturnValue({
       data: { user_consents_to_analytics: true },
@@ -168,7 +168,9 @@ describe("useSyncTelemetryConsent", () => {
     renderHook(() => useSyncTelemetryConsent());
 
     expect(saveSettingsMock).not.toHaveBeenCalled();
-    expect(setTelemetryConsentMock).not.toHaveBeenCalled();
+    expect(setTelemetryConsentMock).toHaveBeenCalledWith("granted", {
+      syncToCloud: false,
+    });
   });
 
   it("does not start another mutation while bounded retries run", () => {

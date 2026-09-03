@@ -131,27 +131,29 @@ describe("AppSettingsScreen", () => {
     });
   });
 
-  it("does not expose or persist analytics consent for Sandbox", async () => {
+  it("exposes and persists analytics consent for Sandbox", async () => {
     activeBackendState.kind = "sandbox";
     const saveSettingsSpy = vi
       .spyOn(SettingsService, "saveSettings")
       .mockResolvedValue(true);
-    vi.spyOn(SettingsService, "getSettings").mockResolvedValue(buildSettings());
+    vi.spyOn(SettingsService, "getSettings").mockResolvedValue(
+      buildSettings({ user_consents_to_analytics: true }),
+    );
 
     renderAppSettingsScreen();
 
     const user = userEvent.setup();
     await screen.findByTestId("enable-sound-notifications-switch");
-    expect(
-      screen.queryByTestId("enable-analytics-switch"),
-    ).not.toBeInTheDocument();
+    const analyticsSwitch = screen.getByTestId("enable-analytics-switch");
+    expect(analyticsSwitch).toBeInTheDocument();
+    await user.click(analyticsSwitch);
     await user.click(screen.getByTestId("enable-sound-notifications-switch"));
     await user.click(screen.getByTestId("submit-button"));
 
     await waitFor(() => {
       expect(saveSettingsSpy).toHaveBeenCalledWith(
-        expect.not.objectContaining({
-          user_consents_to_analytics: expect.anything(),
+        expect.objectContaining({
+          user_consents_to_analytics: false,
         }),
       );
     });

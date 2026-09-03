@@ -1,4 +1,5 @@
 import { AGENT_CANVAS_CLIENT_SOURCE } from "#/api/client-source";
+import type { BackendKind } from "#/api/backend-registry/types";
 import { getBackendTelemetryProperties } from "#/services/telemetry-context";
 import { trackEvent } from "#/services/telemetry";
 
@@ -24,9 +25,9 @@ function cloudLoginBackendContext() {
   });
 }
 
-function cloudConversationBackendContext() {
+function conversationBackendContext(backendKind: BackendKind) {
   return getBackendTelemetryProperties({
-    backendKind: "cloud",
+    backendKind,
   });
 }
 
@@ -53,9 +54,10 @@ export function trackCloudDeviceAuthorizationSucceeded(
 export function trackCloudConversationReady(
   taskId: string,
   conversationId: string,
+  backendKind: BackendKind = "cloud",
 ): void {
   trackCloudFunnelEvent("cloud_conversation_ready", {
-    ...cloudConversationBackendContext(),
+    ...conversationBackendContext(backendKind),
     $insert_id: `${CLOUD_CONVERSATION_READY_INSERT_ID_PREFIX}:${taskId}`,
     task_id: taskId,
     conversation_id: conversationId,

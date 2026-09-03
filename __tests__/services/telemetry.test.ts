@@ -524,15 +524,17 @@ describe("Telemetry Service", () => {
       });
     });
 
-    it("does not capture consented events for Sandbox", async () => {
+    it("captures consented events for Sandbox", async () => {
       await setTelemetryConsent("granted");
       setTelemetryBackendContext({ backendKind: "sandbox" });
       vi.clearAllMocks();
 
       await trackEvent("custom_action");
 
-      expect(mockPosthog.capture).not.toHaveBeenCalled();
-      await expect(getTelemetryDistinctId()).resolves.toBeNull();
+      expect(mockPosthog.capture).toHaveBeenCalledWith("custom_action", {});
+      await expect(getTelemetryDistinctId()).resolves.toBe(
+        "ph-test-distinct-id",
+      );
     });
 
     it("does not repair SDK opt-out or capture when consent is denied", async () => {

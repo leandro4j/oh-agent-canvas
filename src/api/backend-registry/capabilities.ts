@@ -39,7 +39,7 @@ const SANDBOX_FEATURES = Object.freeze({
   llmProfileDuplication: false,
   llmSubscriptionAuth: false,
   plugins: false,
-  telemetry: false,
+  telemetry: true,
 }) satisfies Readonly<Record<BackendFeature, boolean>>;
 
 export const BACKEND_CAPABILITIES: Readonly<

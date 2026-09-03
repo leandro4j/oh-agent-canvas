@@ -7,6 +7,7 @@ const state = {
   backendKind: "local" as "local" | "cloud",
   backendHost: "http://localhost:8000",
   backendApiKey: "key-1",
+  backendConnectionRevision: 0,
   consent: "pending" as "pending" | "granted" | "denied",
   pendingRevocationId: null as string | null,
 };
@@ -26,6 +27,7 @@ vi.mock("#/contexts/active-backend-context", () => ({
       kind: state.backendKind,
       host: state.backendHost,
       apiKey: state.backendApiKey,
+      connectionRevision: state.backendConnectionRevision,
     },
   }),
 }));
@@ -50,6 +52,7 @@ describe("useSyncAutomationTelemetryConsent", () => {
     state.backendId = "local-1";
     state.backendHost = "http://localhost:8000";
     state.backendApiKey = "key-1";
+    state.backendConnectionRevision = 0;
 
     state.backendKind = "local";
     state.consent = "pending";
@@ -118,6 +121,7 @@ describe("useSyncAutomationTelemetryConsent", () => {
     const { rerender } = renderHook(() => useSyncAutomationTelemetryConsent());
 
     state.backendApiKey = "key-2";
+    state.backendConnectionRevision += 1;
     rerender();
 
     expect(syncTelemetryConsentMock).toHaveBeenCalledTimes(2);

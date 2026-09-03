@@ -17,7 +17,18 @@ import { BackendFormModal } from "#/components/features/backends/backend-form-mo
 
 const getServerInfoMock = vi.hoisted(() => vi.fn());
 const getSettingsMock = vi.hoisted(() => vi.fn().mockResolvedValue({}));
+const getCurrentCloudApiKeyMock = vi.hoisted(() => vi.fn());
 const fetchMock = vi.hoisted(() => vi.fn<typeof fetch>());
+
+vi.mock("#/api/cloud/organization-service.api", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("#/api/cloud/organization-service.api")
+  >()),
+  // The form tests should not let the edit-mode cloud status probe race with
+  // the Sandbox validation fetches in the add-mode test.
+  getCurrentCloudApiKey: (...args: unknown[]) =>
+    getCurrentCloudApiKeyMock(...args),
+}));
 
 vi.mock("@openhands/typescript-client/clients", async (importOriginal) => {
   const actual =
@@ -80,6 +91,11 @@ beforeEach(() => {
   fetchMock.mockReset();
   getServerInfoMock.mockReset();
   getServerInfoMock.mockResolvedValue({ version: "1.28.0" });
+  getCurrentCloudApiKeyMock.mockReset();
+  getCurrentCloudApiKeyMock.mockResolvedValue({
+    orgId: null,
+    isLegacyKey: false,
+  });
   __resetActiveStoreForTests();
 });
 

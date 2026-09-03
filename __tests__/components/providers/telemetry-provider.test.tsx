@@ -129,7 +129,7 @@ describe("TelemetryProvider", () => {
     expect(useTelemetryMock).not.toHaveBeenCalled();
   });
 
-  it("disables telemetry for a Sandbox backend", () => {
+  it("enables telemetry for a Sandbox backend", () => {
     setRegisteredBackends([
       {
         id: "sandbox-1",
@@ -150,8 +150,8 @@ describe("TelemetryProvider", () => {
     );
 
     expect(screen.getByTestId("child")).toBeInTheDocument();
-    expect(configureTelemetryMock).toHaveBeenCalledWith(false);
-    expect(initializeClientMock).not.toHaveBeenCalled();
-    expect(useTelemetryMock).not.toHaveBeenCalled();
+    expect(configureTelemetryMock).toHaveBeenCalledWith(runtimeConfig);
+    expect(initializeClientMock).toHaveBeenCalledOnce();
+    expect(useTelemetryMock).toHaveBeenCalledOnce();
   });
 });

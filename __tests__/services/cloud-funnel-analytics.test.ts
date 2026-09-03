@@ -65,6 +65,22 @@ describe("cloud funnel analytics", () => {
     );
   });
 
+  it.each(["local", "sandbox"] as const)(
+    "records the actual %s backend for the ready milestone",
+    (backendKind) => {
+      trackCloudConversationReady(
+        "task-local",
+        "conversation-local",
+        backendKind,
+      );
+
+      expect(mocks.trackEvent).toHaveBeenCalledWith(
+        "cloud_conversation_ready",
+        expect.objectContaining({ backend_kind: backendKind }),
+      );
+    },
+  );
+
   it("uses a stable insert ID to deduplicate polling consumers at ingestion", () => {
     trackCloudConversationReady("task-dedupe", "conversation-dedupe");
     trackCloudConversationReady("task-dedupe", "conversation-dedupe");

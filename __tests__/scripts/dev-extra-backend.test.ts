@@ -152,10 +152,21 @@ describe("dev-extra-backend CLI shutdown", () => {
         {
           cwd: repoRoot,
           env: {
-            ...process.env,
-            PATH: `${stubDir}${path.delimiter}${process.env.PATH ?? ""}`,
-            OH_CANVAS_EXTRA_BACKEND_PORT: String(backendPort),
-          },
+          ...process.env,
+          PATH: `${stubDir}${path.delimiter}${process.env.PATH ?? ""}`,
+          OH_CANVAS_EXTRA_BACKEND_PORT: String(backendPort),
+          OH_CANVAS_SAFE_STATE_DIR: path.join(stubDir, "state"),
+          OH_SECRET_KEY_PATH: path.join(
+            stubDir,
+            "state",
+            "secret-key.txt",
+          ),
+          OH_SESSION_API_KEY_PATH: path.join(
+            stubDir,
+            "state",
+            "api-key.txt",
+          ),
+        },
           stdio: ["ignore", "pipe", "pipe"],
         },
       );

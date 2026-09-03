@@ -940,51 +940,68 @@ describe("dev-safe CLI startup", () => {
   it("exits promptly when uvx is missing", async () => {
     // Skip this test if uvx is globally installed via /usr/local/bin symlink
     // that may still be accessible even with a stripped PATH
-    const child = spawn(process.execPath, ["scripts/dev-safe.mjs"], {
-      cwd: repoRoot,
-      env: {
-        // Use empty PATH to ensure uvx is not found.
-        PATH: "",
-        // Redirect the agent-server port to a high free port so the
-        // assertPortsFree pre-flight check passes when a real dev stack is
-        // running on the default port (18000) — the test is about uvx, not
-        // port detection.
-        OH_CANVAS_SAFE_BACKEND_PORT: "19810",
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    const stateDir = mkdtempSync(path.join(tmpdir(), "dev-safe-missing-uvx-"));
 
-    let output = "";
-    child.stdout.on("data", (chunk) => {
-      output += chunk.toString();
-    });
-    child.stderr.on("data", (chunk) => {
-      output += chunk.toString();
-    });
+    try {
+      const child = spawn(process.execPath, ["scripts/dev-safe.mjs"], {
+        cwd: repoRoot,
+        env: {
+          ...process.env,
+          // Use empty PATH to ensure uvx is not found.
+          PATH: "",
+          // Redirect the agent-server port to a high free port so the
+          // assertPortsFree pre-flight check passes when a real dev stack is
+          // running on the default port (18000) — the test is about uvx, not
+          // port detection.
+          OH_CANVAS_SAFE_BACKEND_PORT: "19810",
+          // Keep this child independent from the host's ~/.openhands state.
+          OH_CANVAS_SAFE_STATE_DIR: stateDir,
+          OH_SECRET_KEY_PATH: path.join(stateDir, "secret-key.txt"),
+          OH_SESSION_API_KEY_PATH: path.join(stateDir, "api-key.txt"),
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
 
-    const exitResult = await Promise.race([
-      once(child, "exit").then(([code, signal]) => ({
-        code,
-        signal,
-        timedOut: false,
-      })),
-      delay(4_000).then(() => ({ code: null, signal: null, timedOut: true })),
-    ]);
+      let output = "";
+      child.stdout.on("data", (chunk) => {
+        output += chunk.toString();
+      });
+      child.stderr.on("data", (chunk) => {
+        output += chunk.toString();
+      });
 
-    if (exitResult.timedOut) {
-      child.kill("SIGKILL");
+      const exitResult = await Promise.race([
+        once(child, "exit").then(([code, signal]) => ({
+          code,
+          signal,
+          timedOut: false,
+        })),
+        delay(4_000).then(() => ({
+          code: null,
+          signal: null,
+          timedOut: true,
+        })),
+      ]);
+
+      if (exitResult.timedOut) {
+        child.kill("SIGKILL");
+      }
+
+      expect(exitResult.timedOut).toBe(false);
+      expect(exitResult.code).toBe(1);
+      expect(output).toContain("Failed to start uvx");
+      expect(output).toContain(
+        "curl -LsSf https://astral.sh/uv/install.sh | sh",
+      );
+      expect(output).toContain(
+        "https://docs.astral.sh/uv/getting-started/installation/",
+      );
+      expect(output).toContain("README.md");
+      expect(output).toContain("npm run dev:mock");
+      expect(output).toContain("spawn uvx ENOENT");
+    } finally {
+      rmSync(stateDir, { recursive: true, force: true });
     }
-
-    expect(exitResult.timedOut).toBe(false);
-    expect(exitResult.code).toBe(1);
-    expect(output).toContain("Failed to start uvx");
-    expect(output).toContain("curl -LsSf https://astral.sh/uv/install.sh | sh");
-    expect(output).toContain(
-      "https://docs.astral.sh/uv/getting-started/installation/",
-    );
-    expect(output).toContain("README.md");
-    expect(output).toContain("npm run dev:mock");
-    expect(output).toContain("spawn uvx ENOENT");
   });
 
   it.skipIf(process.platform === "win32")(
@@ -995,6 +1012,7 @@ describe("dev-safe CLI startup", () => {
       // agent-server, then SIGHUP the launcher and assert the stub's port is
       // released rather than held by a survivor.
       const stubDir = mkdtempSync(path.join(tmpdir(), "dev-safe-sighup-"));
+      const stateDir = path.join(stubDir, "state");
       const stubJs = path.join(stubDir, "stub-agent-server.mjs");
       const uvxStub = path.join(stubDir, "uvx");
 
@@ -1035,6 +1053,9 @@ describe("dev-safe CLI startup", () => {
           ...process.env,
           PATH: `${stubDir}${path.delimiter}${process.env.PATH ?? ""}`,
           OH_CANVAS_SAFE_BACKEND_PORT: String(backendPort),
+          OH_CANVAS_SAFE_STATE_DIR: stateDir,
+          OH_SECRET_KEY_PATH: path.join(stateDir, "secret-key.txt"),
+          OH_SESSION_API_KEY_PATH: path.join(stateDir, "api-key.txt"),
         },
         stdio: ["ignore", "pipe", "pipe"],
       });

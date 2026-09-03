@@ -67,22 +67,35 @@ async function getFreePort() {
   }
 }
 
-async function canConnect(port: number) {
+async function canServeHttp(port: number) {
   return new Promise<boolean>((resolve) => {
-    const socket = netConnect({ host: loopbackHost, port });
     let settled = false;
-    const finish = (connected: boolean) => {
+    const finish = (ready: boolean) => {
       if (settled) {
         return;
       }
       settled = true;
-      socket.destroy();
-      resolve(connected);
+      resolve(ready);
     };
-    socket.setTimeout(500);
-    socket.once("connect", () => finish(true));
-    socket.once("error", () => finish(false));
-    socket.once("timeout", () => finish(false));
+
+    const req = request(
+      {
+        host: loopbackHost,
+        port,
+        method: "GET",
+        path: "/__readiness__",
+      },
+      (res) => {
+        res.resume();
+        finish(true);
+      },
+    );
+    req.setTimeout(500, () => {
+      req.destroy();
+      finish(false);
+    });
+    req.once("error", () => finish(false));
+    req.end();
   });
 }
 
@@ -94,7 +107,7 @@ async function waitForPort(port: number, child?: ChildProcess) {
         `Process exited before port ${port} was ready: ${child.exitCode}`,
       );
     }
-    if (await canConnect(port)) {
+    if (await canServeHttp(port)) {
       return;
     }
     await delay(50);

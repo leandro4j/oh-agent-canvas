@@ -232,6 +232,7 @@ describe("useTaskPolling", () => {
     expect(trackCloudConversationReady).toHaveBeenCalledWith(
       "123",
       "conversation-1",
+      "local",
     );
   });
 });

@@ -65,7 +65,7 @@ describe("backend capabilities", () => {
   it.each([
     ["local", true, true, true, true, true, true],
     ["cloud", true, false, true, false, false, true],
-    ["sandbox", false, false, false, false, false, false],
+    ["sandbox", false, false, false, false, false, true],
   ] as const)(
     "publishes the %s feature policy",
     (
