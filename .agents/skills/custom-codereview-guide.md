@@ -8,8 +8,7 @@ triggers:
 # OpenHands Agent Canvas Code Review Guidelines
 
 This guide supplements the public `code-review` skill with rules specific to
-`OpenHands/OpenHands`, the Agent Canvas frontend. Read `AGENTS.md` first; it is
-the detailed source of truth for current architecture and test conventions.
+Agent Canvas. Read root `AGENTS.md`, then every linked guide matching the diff.
 
 Be direct and constructive. Review correctness and architecture, not formatting
 that lint or the compiler already checks.
@@ -31,19 +30,8 @@ that lint or the compiler already checks.
 
 ## Repository Ownership
 
-Put behavior in the repository that owns it:
-
-| Repository                     | Owns                                                                                                            |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| `OpenHands/OpenHands`          | Agent Canvas UI, frontend state, backend selection, frontend service integration, and local-stack orchestration |
-| `OpenHands/software-agent-sdk` | Agent Server, agents, tools, conversations, events, workspaces, and the canonical server API                    |
-| `OpenHands/typescript-client`  | Browser-compatible typed access to the Agent Server API                                                         |
-| `OpenHands/extensions`         | Reusable skills, plugins, and integrations                                                                      |
-| `OpenHands/automation`         | Scheduling, webhooks, run history, and automation dispatch                                                      |
-
-The normal dependency direction is Agent Server contract → TypeScript client →
-Canvas. Flag raw endpoint reimplementations, Canvas-local copies of server
-contracts, and changes opened in the wrong repository.
+Apply [API and repository boundaries](../instructions/api.md). Flag raw endpoint
+reimplementations, Canvas-local wire contracts, and changes in the wrong repo.
 
 ## Architecture That Guides Agents
 
@@ -91,44 +79,18 @@ semantics are explicit.
 
 ### Agent Server and Cloud API access
 
-`src/api/no-direct-agent-server-calls.test.ts` is the executable source of truth.
-Do not approve new raw `fetch`, `axios`, shared `openHands`, or low-level HTTP
-client access to Agent Server endpoints. Use `@openhands/typescript-client` with
-the options from `src/api/agent-server-client-options.ts`.
-
-Cloud and runtime-sandbox requests must go through `callCloudProxy`; runtime
-requests must provide the correct `hostOverride` and authentication mode. Review
-changes to the guard's allowlist as architecture changes. Do not copy its current
-entries into this guide—the test should remain the one authoritative list.
+Apply the API guide. Review typed-client guard allow-list changes as architecture
+changes.
 
 ### Event wire contracts
 
-The SDK event model is the wire authority, the TypeScript client mirrors it, and
-Canvas consumes the published client type. Do not approve Canvas-local
-redeclarations, partial intersections, module augmentation, or presentation
-fields added to wire-event interfaces.
-
-A contract change should land in this order:
-
-1. SDK model/schema and serialization coverage.
-2. TypeScript-client mirror derived from the SDK payload.
-3. Published client release.
-4. Canvas consumption and rendering/telemetry coverage.
-
-Canvas-only presentation state belongs in a separate view model keyed by event
-identity.
+Apply the API guide. Reject Canvas-local redeclarations, module augmentation, and
+presentation fields added to wire-event interfaces.
 
 ### Telemetry and durable frontend state
 
-- `src/services/telemetry.ts` is the only owner of the Canvas PostHog client.
-- React events go through typed functions in `src/hooks/use-tracking.ts`; components
-  must not call PostHog directly.
-- Consent rendering uses the telemetry consent external store, not mirrored local
-  state. `setTelemetryConsent` remains the single consent controller.
-- A business milestone has one canonical capture. Flag duplicate conditional
-  captures.
-- For other durable values, prefer the existing named service/store/hook and flag
-  new storage writes from arbitrary components.
+Apply [telemetry](../instructions/telemetry.md) to analytics changes and
+[frontend conventions](../instructions/frontend.md) to durable state changes.
 
 ## Dependencies and Releases
 
@@ -153,7 +115,7 @@ identity.
   that only prove another mock was called.
 - Keep tests focused: one meaningful assertion path per behavior, no duplicated
   coverage of library behavior, and no brittle presentation-only snapshots.
-- Follow the test routing in `AGENTS.md`. If a change crosses a full-stack flow
+- Follow [testing](../instructions/testing.md) and its E2E routing. If a change crosses a full-stack flow
   and lacks suitable coverage, recommend mock-LLM E2E and add the `e2e-tests`
   label when appropriate.
 - Never broaden live E2E triggers or secret exposure for convenience.
